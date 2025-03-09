@@ -5,6 +5,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* LexAmp brand colors */
+  --lexamp-primary: #0A2463;
+  --lexamp-secondary: #247BA0;
+  --lexamp-accent: #1E88E5;
+  --lexamp-light: #E3F2FD;
+  --lexamp-dark: #102A43;
+  --lexamp-neutral: #F0F4F8;
+  --lexamp-text: #334E68;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -17,7 +26,7 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
 @layer base {
@@ -93,4 +102,52 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* LexAmp custom styles */
+.lexamp-gradient-bg {
+  background: linear-gradient(135deg, var(--lexamp-light), #ffffff);
+}
+
+.lexamp-primary-btn {
+  @apply bg-[#0A2463] hover:bg-[#081D52] text-white transition-colors;
+}
+
+.lexamp-secondary-btn {
+  @apply bg-[#247BA0] hover:bg-[#1C6580] text-white transition-colors;
+}
+
+.lexamp-outline-btn {
+  @apply border border-[#0A2463] text-[#0A2463] hover:bg-[#E3F2FD] transition-colors;
+}
+
+.dot-pattern {
+  background-image: radial-gradient(#247BA0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.hero-pattern {
+  position: relative;
+}
+
+.hero-pattern::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 35%;
+  height: 100%;
+  background-image: radial-gradient(#1E88E5 1.5px, transparent 1.5px);
+  background-size: 20px 20px;
+  opacity: 0.15;
+  z-index: 0;
+}
+
+.feature-card {
+  @apply bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100;
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease-in-out;
 }

@@ -48,61 +48,95 @@ export default function LawFirmsSection() {
   ];
 
   return (
-    <div id="law-firms" className="py-16 bg-blue-900 text-white overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="lg:text-center">
-          <h2 className="text-base text-amber-400 font-semibold tracking-wide uppercase">
-            Partner With Us
-          </h2>
-          <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight sm:text-4xl">
-            Join Our Network of Legal Professionals
-          </p>
-          <p className="mt-4 max-w-2xl text-xl text-blue-100 lg:mx-auto">
-            Grow your practice, streamline client acquisition, and focus on what you do best - providing expert legal counsel.
-          </p>
-        </div>
+    <div id="law-firms" className="py-16 bg-gradient-to-br from-[#0A2463] to-[#102A43] text-white overflow-hidden">
+      <div className="relative">
+        <div className="absolute top-0 right-0 w-1/3 h-full dot-pattern opacity-10"></div>
+        <div className="absolute bottom-0 left-0 w-1/3 h-2/3 dot-pattern opacity-10"></div>
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="lg:text-center">
+            <h2 className="text-base text-[#1E88E5] font-semibold tracking-wide uppercase">
+              Partner With Us
+            </h2>
+            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight sm:text-4xl">
+              Join Our Network of Legal Professionals
+            </p>
+            <p className="mt-4 max-w-2xl text-xl text-blue-100 lg:mx-auto">
+              Grow your practice, streamline client acquisition, and focus on what you do best - providing expert legal counsel.
+            </p>
+          </div>
 
-        <div className="mt-16">
-          <div className="space-y-10 md:space-y-0 md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-10">
-            {benefits.map((benefit) => (
-              <div key={benefit.title} className="relative">
-                <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-amber-500 text-white">
-                  {benefit.icon}
+          <div className="mt-16">
+            <div className="space-y-10 md:space-y-0 md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-10">
+              {benefits.map((benefit) => (
+                <div key={benefit.title} className="relative bg-white/10 backdrop-blur-sm rounded-lg p-6 hover:bg-white/15 transition-colors">
+                  <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-[#1E88E5] text-white">
+                    {benefit.icon}
+                  </div>
+                  <div className="ml-16">
+                    <h3 className="text-lg leading-6 font-medium">{benefit.title}</h3>
+                    <p className="mt-2 text-base text-blue-200">{benefit.description}</p>
+                  </div>
                 </div>
-                <div className="ml-16">
-                  <h3 className="text-lg leading-6 font-medium">{benefit.title}</h3>
-                  <p className="mt-2 text-base text-blue-200">{benefit.description}</p>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-20">
+            <h3 className="text-xl font-bold text-center mb-10">How to Join Our Platform</h3>
+            
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                {steps.map((step) => (
+                  <div key={step.number} className="bg-white/5 rounded-lg p-6 relative hover:bg-white/10 transition-colors">
+                    <div className="absolute -top-4 -left-4 w-10 h-10 rounded-full bg-[#1E88E5] flex items-center justify-center text-white font-bold">
+                      {step.number}
+                    </div>
+                    <h4 className="text-lg font-medium mb-2 mt-2">{step.title}</h4>
+                    <p className="text-blue-100">{step.description}</p>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-10 p-6 bg-white/5 rounded-lg">
+                <h4 className="text-lg font-bold mb-2">Early Adopter Benefits</h4>
+                <p className="text-blue-100 mb-4">Law firms that join during our launch phase receive special benefits:</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-[#1E88E5] mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Priority listing placement</span>
+                  </div>
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-[#1E88E5] mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Reduced commission rates</span>
+                  </div>
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-[#1E88E5] mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Template co-development</span>
+                  </div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
-        </div>
 
-        <div className="mt-20">
-          <h3 className="text-xl font-bold text-center mb-10">How to Join Our Platform</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {steps.map((step) => (
-              <div key={step.number} className="bg-blue-800 bg-opacity-50 rounded-lg p-6 relative">
-                <div className="absolute -top-4 -left-4 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold">
-                  {step.number}
-                </div>
-                <h4 className="text-lg font-medium mb-2 mt-2">{step.title}</h4>
-                <p className="text-blue-100">{step.description}</p>
-              </div>
-            ))}
+          <div className="mt-16 text-center">
+            <Link 
+              href="/auth/firm" 
+              className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-[#0A2463] bg-[#1E88E5] hover:bg-[#1976D2] md:py-4 md:text-lg md:px-10 transition duration-150 ease-in-out"
+            >
+              Register Your Law Firm
+            </Link>
+            <p className="mt-4 text-sm text-blue-200">
+              Already have an account? <Link href="/auth" className="text-[#90CAF9] hover:text-white">Sign in here</Link>
+            </p>
           </div>
-        </div>
-
-        <div className="mt-16 text-center">
-          <Link 
-            href="/auth/firm" 
-            className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-900 bg-amber-400 hover:bg-amber-300 md:py-4 md:text-lg md:px-10 transition duration-150 ease-in-out"
-          >
-            Start Your Law Firm Registration
-          </Link>
-          <p className="mt-4 text-sm text-blue-200">
-            Already have an account? <Link href="/auth" className="text-amber-300 hover:text-amber-200">Sign in here</Link>
-          </p>
         </div>
       </div>
     </div>
