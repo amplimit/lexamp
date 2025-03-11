@@ -1,3 +1,4 @@
+// src/app/dashboard/assistant/page.tsx - Updated version
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
@@ -15,7 +16,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 
-// Mock data for example questions
+// Example questions remain the same
 const suggestedQuestions = [
   "What's the difference between a will and a trust?",
   "How do I evict a tenant who hasn't paid rent?",
@@ -27,7 +28,7 @@ const suggestedQuestions = [
   "How can I contest a speeding ticket?",
 ]
 
-// Mock data for chat history
+// Initial welcome message
 const initialMessages = [
   {
     id: 1,
@@ -45,6 +46,9 @@ export default function AssistantPage() {
   const [messages, setMessages] = useState(initialMessages)
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [conversationId, setConversationId] = useState(null)
+  const [messageId, setMessageId] = useState(null)
+  const [eventSource, setEventSource] = useState(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [currentSuggestionPage, setCurrentSuggestionPage] = useState(0)
   
@@ -60,14 +64,53 @@ export default function AssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+  // Create a new conversation when component mounts
+  useEffect(() => {
+    async function createConversation() {
+      try {
+        const response = await fetch('http://localhost:5000/api/conversations/new', {
+          method: 'POST',
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setConversationId(data.id);
+          
+          // Set initial assistant message from API response
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages.map(msg => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp
+            })));
+          }
+        } else {
+          console.error('Failed to create conversation');
+        }
+      } catch (error) {
+        console.error('Error creating conversation:', error);
+      }
+    }
+
+    createConversation();
     
-    // Add user message
+    // Cleanup function to close any open event source
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, []);
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || !conversationId) return
+    
+    // Add user message to state immediately
     const userMessage = {
-      id: messages.length + 1,
+      id: Date.now().toString(),
       role: 'user',
       content: input,
       timestamp: new Date().toISOString(),
@@ -77,18 +120,98 @@ export default function AssistantPage() {
     setInput('')
     setIsTyping(true)
     
-    // Simulate AI response after a short delay
-    setTimeout(() => {
-      const aiResponse = {
-        id: messages.length + 2,
-        role: 'assistant',
-        content: getMockResponse(input),
-        timestamp: new Date().toISOString(),
+    try {
+      // Step 1: Send message to server
+      const response = await fetch(`http://localhost:5000/api/conversations/${conversationId}/messages/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: userMessage.content }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send message');
       }
       
-      setMessages(prev => [...prev, aiResponse])
-      setIsTyping(false)
-    }, 1500)
+      const data = await response.json();
+      setMessageId(data.message_id);
+      
+      // Step 2: Open SSE connection to receive streaming response
+      const es = new EventSource(`http://localhost:5000/api/conversations/${conversationId}/messages/stream`);
+      setEventSource(es);
+      
+      // Create a placeholder for the streaming response
+      const assistantPlaceholder = {
+        id: data.message_id,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString(),
+        streaming: true,
+      };
+      
+      setMessages(prev => [...prev, assistantPlaceholder]);
+      
+      es.onmessage = (event) => {
+        const eventData = JSON.parse(event.data);
+        
+        if (eventData.status === 'complete') {
+          // Stream is complete
+          setIsTyping(false);
+          es.close();
+          setEventSource(null);
+        } else if (eventData.chunk) {
+          // Update the message with new chunk
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === data.message_id 
+                ? { ...msg, content: eventData.full_response, streaming: true } 
+                : msg
+            )
+          );
+        } else if (eventData.status === 'error') {
+          // Handle error
+          setIsTyping(false);
+          es.close();
+          setEventSource(null);
+          
+          // Add error message
+          setMessages(prev => [
+            ...prev.filter(msg => msg.id !== data.message_id),
+            {
+              id: data.message_id,
+              role: 'assistant',
+              content: 'Sorry, there was an error processing your request. Please try again later.',
+              timestamp: new Date().toISOString(),
+              error: true,
+            }
+          ]);
+        }
+      };
+      
+      es.onerror = () => {
+        console.error('EventSource error');
+        es.close();
+        setEventSource(null);
+        setIsTyping(false);
+      };
+      
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setIsTyping(false);
+      
+      // Add error message
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+          timestamp: new Date().toISOString(),
+          error: true,
+        }
+      ]);
+    }
   }
 
   // Handle suggestion click
@@ -116,84 +239,6 @@ export default function AssistantPage() {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  // Mock AI responses (in a real app, this would be an API call to your AI service)
-  const getMockResponse = (question: string) => {
-    // Simple pattern matching for demo purposes
-    if (question.toLowerCase().includes('will') && question.toLowerCase().includes('trust')) {
-      return `Great question about wills and trusts! Here's the key difference:
-
-**Will:**
-- Takes effect only after death
-- Goes through probate (public court process)
-- Distributes only probate assets
-- Can name guardians for minor children
-
-**Trust:**
-- Can take effect during your lifetime
-- Avoids probate (private)
-- Can manage assets during incapacity
-- Can manage distribution over time rather than all at once
-
-Both documents serve important purposes in estate planning, and many people use both. A will serves as a "safety net" for assets not transferred to your trust.
-
-Would you like more specific information about either wills or trusts?`
-    } else if (question.toLowerCase().includes('evict') || question.toLowerCase().includes('tenant')) {
-      return `Eviction procedures vary by location, but here's a general process:
-
-1. **Valid legal reason** - Typically non-payment of rent, lease violations, property damage, or illegal activity
-2. **Written notice** - Provide proper written notice with specific timeframe (varies by location, usually 3-30 days)
-3. **File eviction lawsuit** - If tenant doesn't comply with notice
-4. **Court hearing** - Both landlord and tenant present their case
-5. **Court judgment** - If landlord wins, court issues order for tenant to vacate
-6. **Enforcement** - If tenant still refuses to leave, local law enforcement handles removal
-
-Important notes:
-- "Self-help" evictions (changing locks, removing belongings, shutting off utilities) are illegal
-- Local tenant protection laws may add requirements
-- The COVID-19 pandemic affected eviction procedures in many jurisdictions
-
-I recommend consulting with a local attorney who specializes in landlord-tenant law for advice specific to your situation.`
-    } else if (question.toLowerCase().includes('car accident')) {
-      return `Here are the steps you should take after a car accident:
-
-**Immediate steps:**
-1. Check for injuries and call 911 if needed
-2. Move to a safe location if possible
-3. Call police to file a report
-4. Exchange information with other driver(s):
-   - Name and contact information
-   - Insurance company and policy number
-   - Driver's license and license plate numbers
-   - Vehicle make, model, and year
-5. Document the scene:
-   - Take photos of all vehicles and damage
-   - Note road conditions, traffic signs, and weather
-   - Get contact information from witnesses
-
-**Follow-up steps:**
-1. Notify your insurance company promptly
-2. Seek medical attention (even for minor injuries)
-3. Keep track of all expenses and documentation
-4. Contact a personal injury attorney if:
-   - There are significant injuries
-   - There's dispute about fault
-   - Insurance company is not cooperating
-
-Remember, what you say after an accident can impact your claim. Stick to facts and avoid admitting fault.`
-    } else {
-      // Generic response for other questions
-      return `Thanks for your question! While I can provide general legal information, the specifics of your situation may require personalized legal advice.
-
-Based on your question about "${question.split(' ').slice(0, 5).join(' ')}...", I'd recommend:
-
-1. Researching relevant laws in your jurisdiction
-2. Consulting with a qualified attorney who specializes in this area of law
-3. Gathering all relevant documentation related to your situation
-
-Would you like me to help narrow down what type of legal professional would be best suited to help with this specific issue?`
-    }
   }
 
   return (
@@ -239,7 +284,7 @@ Would you like me to help narrow down what type of legal professional would be b
                       </span>
                     </div>
                     
-                    {message.role === 'assistant' && (
+                    {message.role === 'assistant' && !message.streaming && (
                       <div className="flex items-center mt-1 ml-1 space-x-2">
                         <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full">
                           <ThumbsUp className="h-4 w-4" />
@@ -255,7 +300,7 @@ Would you like me to help narrow down what type of legal professional would be b
             ))}
             
             {/* Show typing indicator */}
-            {isTyping && (
+            {isTyping && !messages.some(msg => msg.streaming) && (
               <div className="flex justify-start">
                 <div className="flex flex-row">
                   <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center bg-amber-100 mr-3">
@@ -325,6 +370,7 @@ Would you like me to help narrow down what type of legal professional would be b
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Type your legal question..."
                   className="flex-grow border-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+                  disabled={!conversationId || isTyping}
                 />
                 <button 
                   type="button"
@@ -340,7 +386,7 @@ Would you like me to help narrow down what type of legal professional would be b
             <Button 
               type="submit" 
               className="bg-blue-900 hover:bg-blue-800"
-              disabled={!input.trim() || isTyping}
+              disabled={!input.trim() || !conversationId || isTyping}
             >
               <Send className="h-4 w-4" />
             </Button>

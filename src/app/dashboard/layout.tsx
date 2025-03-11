@@ -81,11 +81,11 @@ export default function DashboardLayout({
             <span>Find Lawyers</span>
           </Link>
           <Link
-            href="/dashboard/consultations"
+            href="/dashboard/assistant"
             className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <MessageSquare className="h-5 w-5 text-gray-500" />
-            <span>Consultations</span>
+            <span>AI Assistant</span>
           </Link>
           <Link
             href="/dashboard/documents"
