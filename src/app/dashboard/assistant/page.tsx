@@ -19,7 +19,8 @@ import {
   Clock,
   Menu,
   X,
-  MessageSquare
+  MessageSquare,
+  AlertTriangle
 } from 'lucide-react'
 
 // Define message interface
@@ -176,6 +177,10 @@ export default function AssistantPage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   
+  // Use mock mode instead of real API (toggle this based on your environment)
+  const [useMockMode, setUseMockMode] = useState(true)
+  const [apiStatusChecked, setApiStatusChecked] = useState(false)
+  
   const suggestionsPerPage = 4
   const totalSuggestionPages = Math.ceil(suggestedQuestions.length / suggestionsPerPage)
   const currentSuggestions = suggestedQuestions.slice(
@@ -194,17 +199,79 @@ export default function AssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Create a new conversation when component mounts or when explicitly called
+  // Check API status on component mount
   useEffect(() => {
-    createNewConversation()
+    const checkApiStatus = async () => {
+      if (apiStatusChecked) return;
+      
+      try {
+        console.log('Checking API status...');
+        
+        // Simple ping to check if API is available
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('API timeout')), 2000)
+        );
+        
+        console.log('Attempting to connect to:', getApiBaseUrl());
+        const fetchPromise = fetch(getApiBaseUrl(), { 
+          method: 'HEAD',
+          // Adding these headers to help diagnose potential CORS issues 
+          headers: {
+            'Accept': 'application/json',
+          },
+          // Ensure credentials are included if needed
+          credentials: 'include',
+        });
+        
+        // Race between fetch and timeout
+        await Promise.race([fetchPromise, timeoutPromise]);
+        
+        // If we get here, API is available
+        setUseMockMode(false);
+        console.log('✅ API is available, using real mode');
+      } catch (error) {
+        // API is not available
+        setUseMockMode(true);
+        console.error('❌ API connection failed:', error instanceof Error ? error.message : String(error));
+        console.log('Using mock mode instead');
+        
+        // Show more diagnostic information
+        console.log('Network diagnosis:');
+        console.log('- Target API URL:', getApiBaseUrl());
+        console.log('- Check if the server is running on that port');
+        console.log('- Check for CORS configuration on the server');
+        console.log('- Check browser console for more detailed error messages');
+      }
+      
+      setApiStatusChecked(true);
+      createNewConversation();
+    };
+    
+    checkApiStatus();
     
     // Cleanup function to close any open event source
     return () => {
       if (eventSource) {
-        eventSource.close()
+        eventSource.close();
       }
+    };
+  }, [apiStatusChecked]);
+
+  // Get API base URL from environment variable or use default
+  const getApiBaseUrl = () => {
+    // In a real app, you would use environment variables
+    // Try with different URL formats to help debugging
+    
+    // 1. Check if we're running in the same origin (e.g., proxy setup)
+    if (typeof window !== 'undefined') {
+      // When running in browser, we can try a relative URL first
+      // which avoids CORS issues if the API is proxied through Next.js
+      return '/api/chat-backend';
     }
-  }, [])
+    
+    // 2. Explicit localhost URL as fallback
+    return 'http://localhost:5000';
+  }
 
   // Function to create a new conversation
   const createNewConversation = async () => {
@@ -219,30 +286,51 @@ export default function AssistantPage() {
       setInput('')
       setIsTyping(false)
       
-      const response = await fetch('http://localhost:5000/api/conversations/new', {
-        method: 'POST',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setConversationId(data.id)
-        setActiveChatId(null) // Reset active chat
-        
-        // Set initial assistant message from API response if available
-        if (data.messages && data.messages.length > 0) {
-          setMessages(data.messages.map((msg: any) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            timestamp: msg.timestamp
-          })))
+      if (!useMockMode) {
+        try {
+          // Try to create a real conversation with the API
+          const response = await fetch(`${getApiBaseUrl()}/api/conversations/new`, {
+            method: 'POST',
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            setConversationId(data.id)
+            setActiveChatId(null) // Reset active chat
+            
+            // Set initial assistant message from API response if available
+            if (data.messages && data.messages.length > 0) {
+              setMessages(data.messages.map((msg: any) => ({
+                id: msg.id,
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp
+              })))
+            }
+          } else {
+            console.warn('API response not OK, using mock mode')
+            createMockConversation()
+          }
+        } catch (error) {
+          console.error('Error creating conversation with API:', error)
+          createMockConversation()
         }
       } else {
-        console.error('Failed to create conversation')
+        createMockConversation()
       }
     } catch (error) {
-      console.error('Error creating conversation:', error)
+      console.error('Error in createNewConversation:', error)
+      createMockConversation()
     }
+  }
+  
+  // Create a mock conversation when API is not available
+  const createMockConversation = () => {
+    // Generate a mock conversation ID
+    const mockId = `mock-${Date.now()}`
+    setConversationId(mockId)
+    setActiveChatId(null)
+    console.log("Using mock conversation with ID:", mockId)
   }
   
   // Load a conversation from history
@@ -272,9 +360,15 @@ export default function AssistantPage() {
     setInput('')
     setIsTyping(true)
     
-    try {
+    // Use mock mode or API based on setting
+    if (useMockMode || conversationId.startsWith('mock-')) {
+      handleMockResponse(userMessage)
+      return
+    }
+    
+    try {      
       // Step 1: Send message to server
-      const response = await fetch(`http://localhost:5000/api/conversations/${conversationId}/messages/stream`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,7 +384,7 @@ export default function AssistantPage() {
       setMessageId(data.message_id)
       
       // Step 2: Open SSE connection to receive streaming response
-      const es = new EventSource(`http://localhost:5000/api/conversations/${conversationId}/messages/stream`)
+      const es = new EventSource(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`)
       setEventSource(es)
       
       // Create a placeholder for the streaming response
@@ -380,18 +474,82 @@ export default function AssistantPage() {
       console.error('Error sending message:', error)
       setIsTyping(false)
       
-      // Add error message
-      setMessages((prev: Message[]) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
-          timestamp: new Date().toISOString(),
-          error: true,
-        }
-      ])
+      // If API fails, use mock mode
+      if (conversationId && !conversationId.startsWith('mock-')) {
+        console.log('Switching to mock mode for response')
+        handleMockResponse(userMessage)
+      } else {
+        // Add error message
+        setMessages((prev: Message[]) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+            timestamp: new Date().toISOString(),
+            error: true,
+          }
+        ])
+      }
     }
+  }
+  
+  // Handle mock responses when API is not available
+  const handleMockResponse = (userMessage: Message) => {
+    // Simulate typing delay
+    setTimeout(() => {
+      // Create a response based on the user's message
+      let responseContent = ''
+      
+      // Simple keyword matching for demo purposes
+      const lowerCaseMessage = userMessage.content.toLowerCase()
+      
+      if (lowerCaseMessage.includes('hello') || lowerCaseMessage.includes('hi')) {
+        responseContent = "Hello! I'm your AI legal assistant. How can I help you today?"
+      } else if (lowerCaseMessage.includes('tenant') || lowerCaseMessage.includes('rent')) {
+        responseContent = "# Tenant Rights\n\nAs a tenant, you generally have several key rights:\n\n1. **Right to habitable living conditions**\n2. **Right to privacy**\n3. **Protection against illegal discrimination**\n4. **Right to your security deposit**\n5. **Protection against retaliatory actions**\n\nThe specific rights can vary by location. What state or country are you located in?"
+      } else if (lowerCaseMessage.includes('contract') || lowerCaseMessage.includes('agreement')) {
+        responseContent = "## Contract Analysis\n\nWhen reviewing any contract, pay attention to:\n\n- **Parties involved**: Who are the parties entering into the agreement?\n- **Terms and conditions**: What are the specific obligations?\n- **Duration**: How long is the agreement valid for?\n- **Termination clauses**: Under what conditions can the contract be ended?\n- **Dispute resolution**: How will disagreements be handled?\n\nWould you like me to explain any of these aspects in more detail?"
+      } else if (lowerCaseMessage.includes('divorce') || lowerCaseMessage.includes('custody')) {
+        responseContent = "# Family Law Matters\n\nDivorce and custody issues involve several legal considerations:\n\n1. **Division of assets and debts**\n2. **Child custody and visitation**\n3. **Child support and alimony**\n4. **Retirement and pension division**\n\nThese matters can be resolved through:\n- Mediation\n- Collaborative divorce\n- Litigation\n\nWhat specific aspect are you concerned about?"
+      } else {
+        responseContent = "I understand you're asking about: \"" + userMessage.content + "\"\n\nThis is a complex legal topic that can vary by jurisdiction. Could you provide more details about your specific situation so I can give you more relevant information?"
+      }
+      
+      // Create the response message
+      const mockResponse: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: responseContent,
+        timestamp: new Date().toISOString(),
+      }
+      
+      // Add the response to messages
+      setMessages((prev: Message[]) => [...prev, mockResponse])
+      setIsTyping(false)
+      
+      // Update chat history
+      const newChat: Chat = {
+        id: conversationId || `chat-${Date.now()}`,
+        title: userMessage.content.length > 30 
+          ? `${userMessage.content.substring(0, 30)}...` 
+          : userMessage.content,
+        preview: userMessage.content,
+        lastActive: new Date().toISOString(),
+        messages: [...messages, userMessage, mockResponse]
+      }
+      
+      setChatHistory((prev: Chat[]) => {
+        const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
+        if (existingIndex >= 0) {
+          const updated = [...prev]
+          updated[existingIndex] = newChat
+          return updated
+        } else {
+          return [newChat, ...prev]
+        }
+      })
+    }, 1500) // Simulate typing delay
   }
 
   // Handle suggestion click
@@ -449,6 +607,7 @@ export default function AssistantPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
+  // Main content
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Chat history sidebar */}
@@ -492,6 +651,16 @@ export default function AssistantPage() {
               </div>
             </div>
           </div>
+          
+          {/* API status indicator */}
+          {useMockMode && (
+            <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+              <div className="flex items-center text-amber-800 text-xs">
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                <span>Demo Mode: Using simulated responses</span>
+              </div>
+            </div>
+          )}
           
           {/* Chat list */}
           <div className="flex-1 overflow-y-auto">
