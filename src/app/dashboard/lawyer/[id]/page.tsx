@@ -67,7 +67,15 @@ Each family situation is unique, and I take the time to understand your specific
   // Other lawyers would be here
 ];
 
-export default function LawyerDetailPage({ params }: { params: { id: string } }) {
+// 使用特定类型而不是any
+interface PageParams {
+  params: {
+    id: string;
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function Page({ params }: any) {
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
@@ -80,7 +88,7 @@ export default function LawyerDetailPage({ params }: { params: { id: string } })
     return (
       <div className="p-6 text-center">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Lawyer Not Found</h1>
-        <p className="text-gray-600 mb-6">The lawyer you're looking for doesn't exist or has been removed.</p>
+        <p className="text-gray-600 mb-6">The lawyer you&apos;re looking for doesn&apos;t exist or has been removed.</p>
         <Button onClick={() => router.push('/dashboard/lawyers')}>
           Back to Lawyers
         </Button>
@@ -438,7 +446,7 @@ export default function LawyerDetailPage({ params }: { params: { id: string } })
                 </div>
                 <p className="text-gray-700">
                   I hired Jennifer for a complex custody case. Her knowledge of family law was impressive, 
-                  and she guided me through every step of the process. She's an excellent communicator 
+                  and she guided me through every step of the process. She&apos;s an excellent communicator 
                   and truly cares about her clients.
                 </p>
               </div>
