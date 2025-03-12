@@ -1,19 +1,19 @@
 // src/app/api/chat-backend/api/conversations/[id]/messages/stream/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-const FLASK_BACKEND_URL = process.env.FLASK_BACKEND_URL || 'http://localhost:5000';
+// 修改接口定义以匹配 Next.js 15 的要求
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
+const FLASK_BACKEND_URL = process.env.FLASK_BACKEND_URL || 'http://localhost:5000';
 
 /**
  * 处理POST请求 - 发送消息
  */
-export async function POST(request: NextRequest, context: RouteParams) {
-    const { id } = context.params;
+export async function POST(request: NextRequest, context: RouteContext) {
+  // 使用 await 获取 id 参数
+  const { id } = await context.params;
   
   try {
     const body = await request.json();
@@ -53,8 +53,9 @@ export async function POST(request: NextRequest, context: RouteParams) {
 /**
  * 处理GET请求 - 流式获取响应
  */
-export async function GET(request: NextRequest, context: RouteParams) {
-  const id = context.params.id; // 直接使用，不需要解构
+export async function GET(request: NextRequest, context: RouteContext) {
+  // 使用 await 获取 id 参数
+  const { id } = await context.params;
   
   // 创建一个响应流
   const encoder = new TextEncoder();

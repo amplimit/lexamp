@@ -1,11 +1,12 @@
 // src/app/dashboard/booking/confirmation/page.tsx
-"use client"
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { useEffect, useState } from "react";
+import { Suspense } from "react"; // 导入 Suspense
+import { useRouter, useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Calendar,
   Clock,
@@ -14,8 +15,8 @@ import {
   User,
   MapPin,
   Download,
-  MessageSquare
-} from 'lucide-react'
+  MessageSquare,
+} from "lucide-react";
 
 interface BookingDetails {
   slotId: string;
@@ -25,33 +26,33 @@ interface BookingDetails {
   lawyerName: string;
 }
 
-export default function BookingConfirmationPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null)
-  
+const BookingConfirmationContent = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
+
   useEffect(() => {
     // Get booking details from URL parameters
-    const slotId = searchParams.get('slotId')
-    const startTime = searchParams.get('startTime')
-    const endTime = searchParams.get('endTime')
-    const lawyerId = searchParams.get('lawyerId')
-    const lawyerName = searchParams.get('lawyerName')
-    
+    const slotId = searchParams.get("slotId");
+    const startTime = searchParams.get("startTime");
+    const endTime = searchParams.get("endTime");
+    const lawyerId = searchParams.get("lawyerId");
+    const lawyerName = searchParams.get("lawyerName");
+
     if (slotId && startTime && endTime && lawyerId && lawyerName) {
       setBookingDetails({
         slotId,
         startTime,
         endTime,
         lawyerId,
-        lawyerName
-      })
+        lawyerName,
+      });
     } else {
       // If no booking details in URL, redirect to dashboard
-      router.push('/dashboard')
+      router.push("/dashboard");
     }
-  }, [searchParams, router])
-  
+  }, [searchParams, router]);
+
   if (!bookingDetails) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -60,28 +61,28 @@ export default function BookingConfirmationPage() {
           <p className="mt-4 text-gray-600">Loading booking details...</p>
         </div>
       </div>
-    )
+    );
   }
-  
-  const startDate = new Date(bookingDetails.startTime)
-  const endDate = new Date(bookingDetails.endTime)
-  
-  const formattedDate = startDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-  
-  const formattedStartTime = startDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-  
-  const formattedEndTime = endDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+
+  const startDate = new Date(bookingDetails.startTime);
+  const endDate = new Date(bookingDetails.endTime);
+
+  const formattedDate = startDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const formattedStartTime = startDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const formattedEndTime = endDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <div className="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -105,7 +106,7 @@ export default function BookingConfirmationPage() {
             Your consultation with {bookingDetails.lawyerName} has been scheduled
           </p>
         </div>
-        
+
         <Card className="p-6 mb-8 shadow-lg border-green-100">
           <div className="space-y-6">
             <div className="flex items-start">
@@ -117,17 +118,19 @@ export default function BookingConfirmationPage() {
                 <p className="mt-1 text-base text-gray-800">{formattedDate}</p>
               </div>
             </div>
-            
+
             <div className="flex items-start">
               <div className="flex-shrink-0">
                 <Clock className="h-6 w-6 text-gray-400" />
               </div>
               <div className="ml-4">
                 <h3 className="text-sm font-medium text-gray-900">Time</h3>
-                <p className="mt-1 text-base text-gray-800">{formattedStartTime} - {formattedEndTime}</p>
+                <p className="mt-1 text-base text-gray-800">
+                  {formattedStartTime} - {formattedEndTime}
+                </p>
               </div>
             </div>
-            
+
             <div className="flex items-start">
               <div className="flex-shrink-0">
                 <User className="h-6 w-6 text-gray-400" />
@@ -137,7 +140,7 @@ export default function BookingConfirmationPage() {
                 <p className="mt-1 text-base text-gray-800">{bookingDetails.lawyerName}</p>
               </div>
             </div>
-            
+
             <div className="flex items-start">
               <div className="flex-shrink-0">
                 <MapPin className="h-6 w-6 text-gray-400" />
@@ -152,7 +155,7 @@ export default function BookingConfirmationPage() {
             </div>
           </div>
         </Card>
-        
+
         <div className="bg-blue-50 p-6 rounded-lg mb-8">
           <h3 className="text-lg font-medium text-blue-900 mb-2">What to prepare</h3>
           <ul className="space-y-2 text-blue-800">
@@ -174,21 +177,21 @@ export default function BookingConfirmationPage() {
             </li>
           </ul>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button
               variant="outline"
               className="w-full flex items-center justify-center"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push("/dashboard")}
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Dashboard
             </Button>
           </motion.div>
-          
+
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-            <Button 
+            <Button
               variant="outline"
               className="w-full flex items-center justify-center"
             >
@@ -196,7 +199,7 @@ export default function BookingConfirmationPage() {
               Add to Calendar
             </Button>
           </motion.div>
-          
+
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button
               className="w-full bg-blue-900 hover:bg-blue-800 flex items-center justify-center"
@@ -209,5 +212,16 @@ export default function BookingConfirmationPage() {
         </div>
       </motion.div>
     </div>
-  )
+  );
+};
+
+export default function BookingConfirmationPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center min-h-screen">Loading...</div>}>
+      <BookingConfirmationContent />
+    </Suspense>
+  );
 }
+
+// 动态渲染配置
+export const dynamic = "force-dynamic";

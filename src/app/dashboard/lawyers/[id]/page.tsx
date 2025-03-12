@@ -93,11 +93,10 @@ const listItem = {
   }
 }
 
-interface PageParams {
-  params: {
-    id: string;
-  };
-}
+// 修改页面参数类型定义
+type PageParams = {
+  params: Promise<{ id: string }>;
+};
 
 export default function LawyerDetailPage({ params }: PageParams) {
   const router = useRouter()
@@ -106,6 +105,7 @@ export default function LawyerDetailPage({ params }: PageParams) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lawyer, setLawyer] = useState<LawyerDetail | null>(null)
+  const [lawyerId, setLawyerId] = useState<string | null>(null)
   
   // Mock success cases (would come from the database in a real implementation)
   const mockSuccessCases = [
@@ -115,42 +115,59 @@ export default function LawyerDetailPage({ params }: PageParams) {
   ]
   
   useEffect(() => {
-    const fetchLawyerDetails = async () => {
-      setIsLoading(true)
-      setError(null)
-      
+    // 在 useEffect 中使用 async 函数处理 Promise
+    const fetchLawyerId = async () => {
       try {
-        const response = await fetch(`/api/lawyers/${params.id}`)
+        // 等待解析参数
+        const resolvedParams = await params;
+        const id = resolvedParams.id;
+        setLawyerId(id);
         
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error('Lawyer not found')
-          }
-          throw new Error('Failed to fetch lawyer details')
-        }
-        
-        const data = await response.json()
-        
-        // Add mock success cases (this would come from the API in a real implementation)
-        data.successCases = mockSuccessCases
-        
-        setLawyer(data)
+        // 有了 ID 后，加载律师详情
+        fetchLawyerDetails(id);
       } catch (error) {
-        console.error('Error fetching lawyer details:', error)
-        setError(error instanceof Error ? error.message : 'Failed to load lawyer details')
-        
-        // If the API fails, use mock data
-        if (params.id === "1") {
-          // Example mock data for lawyer with ID 1
-          setLawyer(getMockLawyerDetails())
-        }
-      } finally {
-        setIsLoading(false)
+        console.error("Error resolving lawyer ID:", error);
+        setError("Failed to load lawyer details");
+        setIsLoading(false);
       }
-    }
+    };
     
-    fetchLawyerDetails()
-  }, [params.id])
+    fetchLawyerId();
+  }, [params]);
+  
+  const fetchLawyerDetails = async (id: string) => {
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const response = await fetch(`/api/lawyers/${id}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Lawyer not found')
+        }
+        throw new Error('Failed to fetch lawyer details')
+      }
+      
+      const data = await response.json()
+      
+      // Add mock success cases (this would come from the API in a real implementation)
+      data.successCases = mockSuccessCases
+      
+      setLawyer(data)
+    } catch (error) {
+      console.error('Error fetching lawyer details:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load lawyer details')
+      
+      // If the API fails, use mock data
+      if (id === "1") {
+        // Example mock data for lawyer with ID 1
+        setLawyer(getMockLawyerDetails())
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
   
   // Mock lawyer details for fallback
   const getMockLawyerDetails = (): LawyerDetail => {

@@ -201,46 +201,45 @@ export default function AssistantPage() {
 
   // Check API status on component mount
   useEffect(() => {
-    const checkApiStatus = async () => {
+    async function checkApiStatus() {
       if (apiStatusChecked) return;
       
       try {
-        console.log('Checking API status...');
+        console.log('正在检查API状态...');
         
-        // Simple ping to check if API is available
+        // 修改1: 增加超时时间到5秒
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('API timeout')), 2000)
+          setTimeout(() => reject(new Error('API超时')), 5000)
         );
         
-        console.log('Attempting to connect to:', getApiBaseUrl());
-        const fetchPromise = fetch(getApiBaseUrl(), { 
+        const apiUrl = getApiBaseUrl();
+        console.log('尝试连接到API:', apiUrl);
+        
+        // 修改2: 使用更简单的fetch请求，使用HEAD方法
+        const fetchPromise = fetch(`${apiUrl}/api/health`, { 
           method: 'HEAD',
-          // Adding these headers to help diagnose potential CORS issues 
-          headers: {
-            'Accept': 'application/json',
-          },
-          // Ensure credentials are included if needed
-          credentials: 'include',
+          // 确保不包含不必要的headers，减少CORS问题
+          credentials: 'omit'
         });
         
-        // Race between fetch and timeout
+        // 使用Promise.race竞争超时
         await Promise.race([fetchPromise, timeoutPromise]);
         
-        // If we get here, API is available
+        // 如果到这里，说明API可用
         setUseMockMode(false);
-        console.log('✅ API is available, using real mode');
+        console.log('✅ API可用，使用真实模式');
       } catch (error) {
-        // API is not available
+        // API不可用
         setUseMockMode(true);
-        console.error('❌ API connection failed:', error instanceof Error ? error.message : String(error));
-        console.log('Using mock mode instead');
+        console.error('❌ API连接失败:', error instanceof Error ? error.message : String(error));
+        console.log('使用模拟模式');
         
-        // Show more diagnostic information
-        console.log('Network diagnosis:');
-        console.log('- Target API URL:', getApiBaseUrl());
-        console.log('- Check if the server is running on that port');
-        console.log('- Check for CORS configuration on the server');
-        console.log('- Check browser console for more detailed error messages');
+        // 显示更多诊断信息
+        console.log('网络诊断:');
+        console.log('- 目标API URL:', getApiBaseUrl());
+        console.log('- 检查服务器是否在该端口运行');
+        console.log('- 检查服务器的CORS配置');
+        console.log('- 检查浏览器控制台获取更详细的错误信息');
       }
       
       setApiStatusChecked(true);
@@ -249,29 +248,30 @@ export default function AssistantPage() {
     
     checkApiStatus();
     
-    // Cleanup function to close any open event source
+    // 清理函数，关闭任何打开的event source
     return () => {
       if (eventSource) {
         eventSource.close();
       }
     };
-  }, [apiStatusChecked]);
+  }, [apiStatusChecked]);  
 
   // Get API base URL from environment variable or use default
   const getApiBaseUrl = () => {
-    // In a real app, you would use environment variables
-    // Try with different URL formats to help debugging
+    // 优先使用环境变量中的API URL
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
     
-    // 1. Check if we're running in the same origin (e.g., proxy setup)
+    // 使用相对URL避免CORS问题
     if (typeof window !== 'undefined') {
-      // When running in browser, we can try a relative URL first
-      // which avoids CORS issues if the API is proxied through Next.js
+      // 使用相对路径，通过Next.js API路由代理请求
       return '/api/chat-backend';
     }
     
-    // 2. Explicit localhost URL as fallback
+    // 默认使用localhost
     return 'http://localhost:5000';
-  }
+  }  
 
   // Function to create a new conversation
   const createNewConversation = async () => {

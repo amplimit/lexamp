@@ -2,16 +2,16 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
+// 修改接口定义以匹配 Next.js 15 的要求
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
 
 // GET /api/lawyers/[id]
-export async function GET(request: Request, { params }: RouteParams) {
+export async function GET(request: Request, context: RouteContext) {
   try {
-    const { id } = params
+    // 使用 await 获取 id 参数
+    const { id } = await context.params;
     
     const lawyer = await prisma.lawyer.findUnique({
       where: { id },
