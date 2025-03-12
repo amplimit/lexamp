@@ -1,16 +1,11 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")  // 注意这里需要用env()函数
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -24,6 +19,10 @@ model User {
   updatedAt     DateTime  @updatedAt
   settings      UserSettings?
   sessions      Session[]
+  type          String    @default("client") // "client" or "lawyer"
+  lawyerId      String?   // If the user is a lawyer
+  lawyer        Lawyer?   @relation(fields: [lawyerId], references: [id], onDelete: SetNull)
+  bookings      Booking[] // Add relation to bookings
 }
 
 model UserSettings {
@@ -68,4 +67,181 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// Law Firm Model
+model LawFirm {
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  description    String?   @db.Text
+  logoUrl        String?
+  websiteUrl     String?
+  address        String?
+  city           String?
+  state          String?
+  zipCode        String?
+  country        String?
+  phone          String?
+  licenseNumber  String?
+  verified       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lawyers        Lawyer[]
+  jurisdictions  FirmJurisdiction[]
+  specializations FirmSpecialization[]
+}
+
+// Lawyer Model
+model Lawyer {
+  id              String    @id @default(cuid())
+  lawFirmId       String?
+  lawFirm         LawFirm?  @relation(fields: [lawFirmId], references: [id], onDelete: SetNull)
+  name            String
+  email           String    @unique
+  photoUrl        String?
+  title           String?
+  bio             String?   @db.Text
+  experience      Int?      // in years
+  education       String?
+  barNumber       String?
+  consultationFee Decimal?  @db.Decimal(10, 2)
+  rating          Decimal?  @db.Decimal(3, 2)
+  reviewCount     Int       @default(0)
+  availableFrom   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  users           User[]
+  specializations  LawyerSpecialization[]
+  languages        LawyerLanguage[]
+  availability     Availability[]
+  reviews          Review[]
+  bookings         Booking[] // Add relation to bookings
+}
+
+// Review Model
+model Review {
+  id              String    @id @default(cuid())
+  lawyerId        String
+  lawyer          Lawyer    @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  reviewerId      String?
+  reviewerName    String?
+  rating          Decimal   @db.Decimal(3, 2)
+  comment         String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Availability Model
+model Availability {
+  id              String    @id @default(cuid())
+  lawyerId        String
+  lawyer          Lawyer    @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  date            DateTime
+  slots           Slot[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Time Slot Model
+model Slot {
+  id              String    @id @default(cuid())
+  availabilityId  String
+  availability    Availability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  startTime       DateTime
+  endTime         DateTime
+  isBooked        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  bookings        Booking?  // Add relation to booking
+}
+
+// Booking Model - New model
+model Booking {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lawyerId        String
+  lawyer          Lawyer    @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  slotId          String    @unique // One slot can only have one booking
+  slot            Slot      @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  message         String?   @db.Text
+  status          String    @default("confirmed") // "confirmed", "cancelled", "completed"
+  meetingLink     String?   // For virtual meetings
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Specialization Model
+model Specialization {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  lawyers         LawyerSpecialization[]
+  firms           FirmSpecialization[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Lawyer Specialization Junction
+model LawyerSpecialization {
+  lawyerId        String
+  lawyer          Lawyer    @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  specializationId String
+  specialization  Specialization @relation(fields: [specializationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+
+  @@id([lawyerId, specializationId])
+}
+
+// Firm Specialization Junction
+model FirmSpecialization {
+  firmId          String
+  firm            LawFirm   @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  specializationId String
+  specialization  Specialization @relation(fields: [specializationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+
+  @@id([firmId, specializationId])
+}
+
+// Language Model
+model Language {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  lawyers         LawyerLanguage[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Lawyer Language Junction
+model LawyerLanguage {
+  lawyerId        String
+  lawyer          Lawyer    @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  languageId      String
+  language        Language  @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  proficiency     String?   // e.g., "Native", "Fluent", "Conversational"
+  createdAt       DateTime  @default(now())
+
+  @@id([lawyerId, languageId])
+}
+
+// Jurisdiction Model
+model Jurisdiction {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  firms           FirmJurisdiction[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Firm Jurisdiction Junction
+model FirmJurisdiction {
+  firmId          String
+  firm            LawFirm   @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  jurisdictionId  String
+  jurisdiction    Jurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+
+  @@id([firmId, jurisdictionId])
 }

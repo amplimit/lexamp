@@ -14,6 +14,17 @@
   --lexamp-dark: #102A43;
   --lexamp-neutral: #F0F4F8;
   --lexamp-text: #334E68;
+  
+  /* Animation durations */
+  --animation-slow: 700ms;
+  --animation-medium: 500ms;
+  --animation-fast: 300ms;
+  
+  /* Easings */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -150,4 +161,425 @@ body {
 .feature-card:hover {
   transform: translateY(-2px);
   transition: transform 0.2s ease-in-out;
+}
+
+/* Animation classes */
+.slide-in-right {
+  animation: slideInRight var(--animation-medium) var(--ease-out) forwards;
+}
+
+.slide-in-left {
+  animation: slideInLeft var(--animation-medium) var(--ease-out) forwards;
+}
+
+.slide-in-bottom {
+  animation: slideInBottom var(--animation-medium) var(--ease-out) forwards;
+}
+
+.slide-in-top {
+  animation: slideInTop var(--animation-medium) var(--ease-out) forwards;
+}
+
+.fade-in {
+  animation: fadeIn var(--animation-medium) var(--ease-out) forwards;
+}
+
+.scale-in {
+  animation: scaleIn var(--animation-medium) var(--ease-bounce) forwards;
+}
+
+.pulse {
+  animation: pulse 2s var(--ease-in-out) infinite;
+}
+
+.float {
+  animation: float 4s var(--ease-in-out) infinite;
+}
+
+.bounce {
+  animation: bounce 2s var(--ease-bounce) infinite;
+}
+
+/* Keyframes */
+@keyframes slideInRight {
+  from {
+    transform: translateX(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInTop {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(-15px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+/* Utility animations */
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.delay-400 {
+  animation-delay: 400ms;
+}
+
+.delay-500 {
+  animation-delay: 500ms;
+}
+
+.delay-750 {
+  animation-delay: 750ms;
+}
+
+.delay-1000 {
+  animation-delay: 1000ms;
+}
+
+/* Transitions */
+.transition-all-medium {
+  transition: all var(--animation-medium) var(--ease-in-out);
+}
+
+.transition-transform-medium {
+  transition: transform var(--animation-medium) var(--ease-in-out);
+}
+
+.transition-opacity-medium {
+  transition: opacity var(--animation-medium) var(--ease-in-out);
+}
+
+.transition-colors-medium {
+  transition: color var(--animation-medium) var(--ease-in-out), 
+              background-color var(--animation-medium) var(--ease-in-out),
+              border-color var(--animation-medium) var(--ease-in-out);
+}
+
+/* Hover effects */
+.hover-scale {
+  transition: transform var(--animation-fast) var(--ease-bounce);
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+.hover-lift {
+  transition: transform var(--animation-fast) var(--ease-out), 
+              box-shadow var(--animation-fast) var(--ease-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 
+              0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading animations */
+.loading-dots div {
+  animation-timing-function: cubic-bezier(0, 1, 1, 0);
+}
+
+.loading-dots div:nth-child(1) {
+  animation: loading-dots 0.6s infinite;
+}
+
+.loading-dots div:nth-child(2) {
+  animation: loading-dots 0.6s infinite 0.2s;
+}
+
+.loading-dots div:nth-child(3) {
+  animation: loading-dots 0.6s infinite 0.4s;
+}
+
+@keyframes loading-dots {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0);
+  }
+}
+
+/* Card hover animations */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Image animations */
+.image-scale {
+  overflow: hidden;
+}
+
+.image-scale img {
+  transition: transform 0.6s var(--ease-out);
+}
+
+.image-scale:hover img {
+  transform: scale(1.08);
+}
+
+/* Background animations */
+.bg-animate {
+  background-size: 200% 200%;
+  animation: bg-position 3s ease infinite;
+}
+
+@keyframes bg-position {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Button animations */
+.btn-pulse:hover {
+  animation: btn-pulse 1s infinite;
+}
+
+@keyframes btn-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--lexamp-primary-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--lexamp-primary-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--lexamp-primary-rgb), 0);
+  }
+}
+
+/* Shake animation */
+.shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake {
+  10%, 90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+  
+  20%, 80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%, 50%, 70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+
+  40%, 60% {
+    transform: translate3d(4px, 0, 0);
+  }
+}
+
+/* Stagger animations for lists */
+.stagger-list > * {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.stagger-list.animate > *:nth-child(1) {
+  animation: stagger-item 0.5s var(--ease-out) forwards;
+}
+
+.stagger-list.animate > *:nth-child(2) {
+  animation: stagger-item 0.5s var(--ease-out) 0.1s forwards;
+}
+
+.stagger-list.animate > *:nth-child(3) {
+  animation: stagger-item 0.5s var(--ease-out) 0.2s forwards;
+}
+
+.stagger-list.animate > *:nth-child(4) {
+  animation: stagger-item 0.5s var(--ease-out) 0.3s forwards;
+}
+
+.stagger-list.animate > *:nth-child(5) {
+  animation: stagger-item 0.5s var(--ease-out) 0.4s forwards;
+}
+
+.stagger-list.animate > *:nth-child(n+6) {
+  animation: stagger-item 0.5s var(--ease-out) 0.5s forwards;
+}
+
+@keyframes stagger-item {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Markdown content styling */
+.markdown-content h1 {
+  @apply text-2xl font-bold mt-6 mb-4;
+}
+
+.markdown-content h2 {
+  @apply text-xl font-bold mt-5 mb-3;
+}
+
+.markdown-content h3 {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+
+.markdown-content p {
+  @apply my-3;
+}
+
+.markdown-content ul, .markdown-content ol {
+  @apply ml-5 my-3 space-y-1;
+}
+
+.markdown-content ul {
+  @apply list-disc;
+}
+
+.markdown-content ol {
+  @apply list-decimal;
+}
+
+.markdown-content li {
+  @apply ml-1;
+}
+
+.markdown-content blockquote {
+  @apply pl-4 border-l-4 border-gray-300 text-gray-600 italic my-4;
+}
+
+.markdown-content code {
+  @apply bg-gray-100 px-1 py-0.5 rounded text-sm;
+}
+
+.markdown-content pre {
+  @apply bg-gray-100 p-4 rounded my-4 overflow-x-auto;
+}
+
+.markdown-content pre code {
+  @apply bg-transparent p-0;
+}
+
+.markdown-content a {
+  @apply text-blue-600 hover:underline;
+}
+
+.markdown-content hr {
+  @apply my-6 border-gray-200;
+}
+
+.markdown-content table {
+  @apply w-full border-collapse my-4;
+}
+
+.markdown-content th, .markdown-content td {
+  @apply border border-gray-300 px-3 py-2;
+}
+
+.markdown-content th {
+  @apply bg-gray-100 font-semibold;
 }
