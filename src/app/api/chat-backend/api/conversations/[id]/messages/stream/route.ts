@@ -13,7 +13,7 @@ interface RouteParams {
  * 处理POST请求 - 发送消息
  */
 export async function POST(request: NextRequest, context: RouteParams) {
-  const id = context.params.id; // 直接使用，不需要解构
+    const { id } = context.params;
   
   try {
     const body = await request.json();

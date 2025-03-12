@@ -1,11 +1,11 @@
-// src/app/api/auth/register-firm/route.ts
+// src/app/api/auth/register-firm/route.js
 import { NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
-export async function POST(req: Request) {
+export async function POST(req) {
   try {
     const body = await req.json()
     const { 
