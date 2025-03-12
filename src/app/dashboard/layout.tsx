@@ -41,7 +41,7 @@ export default function DashboardLayout({
       >
         <div className="flex items-center justify-between h-16 px-4 border-b">
           <Link href="/" className="text-xl font-bold text-blue-900">
-            Universal<span className="text-amber-700">Legal</span>
+            <span className="text-2xl font-bold text-[#0A2463]">Lex<span className="text-[#247BA0]">Amp</span></span>
           </Link>
           <button
             className="md:hidden"
