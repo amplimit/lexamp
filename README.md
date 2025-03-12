@@ -1,7 +1,7 @@
 # Lexamp
 
 <div align="center">
-  <img src="src/app/favicon.ico" alt="Lexamp Logo" width="200"/>
+  <img src="public/favicon.ico" alt="Lexamp Logo" width="200"/>
   <p><em>Democratizing Legal Services through AI and Professional Expertise</em></p>
 </div>
 
@@ -147,9 +147,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 For support and queries:
-- Create an issue in the [GitHub repository](https://github.com/stevenchen16/Lexamp/issues)
+- Create an issue in the [GitHub repository](https://github.com/amplimit/Lexamp/issues)
 - Contact us at [i@stevenchen.site](mailto:i@stevenchen.site)
-- Visit our [documentation](https://bosseconbizchamps.org)
+- Visit our [documentation](https://amplimit.com)
 
 ---
 
