@@ -156,7 +156,7 @@ export default function Footer() {
         </div>
         <div className="mt-12 border-t border-gray-200 pt-8">
           <p className="text-base text-[#334E68] xl:text-center">
-            &copy; 2025 LexAmp. All rights reserved. A product of <link href="https://amplimit.com" className="text-[#247BA0]">Amplimit</link>.
+            &copy; 2025 LexAmp. All rights reserved. A product of <a href="https://amplimit.com" className="text-[#247BA0]">Amplimit</a>.
           </p>
           <p className="mt-2 text-sm text-[#334E68] xl:text-center">
             Not a substitute for professional legal advice. LexAmp is a legal technology platform designed to improve access to legal information and services.

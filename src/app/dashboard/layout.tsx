@@ -89,11 +89,17 @@ export default function DashboardLayout({
   }
 
   const navItemVariants = {
+    initial: {
+      backgroundColor: "transparent"
+    },
     hover: {
       backgroundColor: "rgba(243, 244, 246, 1)",
-      transition: { duration: 0.2 }
+      transition: { duration: 0.2, ease: "easeInOut" }
     },
-    tap: { scale: 0.98 }
+    tap: { 
+      scale: 0.98,
+      backgroundColor: "rgba(229, 231, 235, 1)"
+    }
   }
 
   return (
@@ -139,13 +145,14 @@ export default function DashboardLayout({
         
         <nav className="mt-6 px-4 space-y-1">
           <motion.div
+            initial="initial"
             whileHover="hover"
             whileTap="tap"
             variants={navItemVariants}
           >
             <NextLink
               href="/dashboard"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
             >
               <Home className="h-5 w-5 text-gray-500" />
               <span>Overview</span>
@@ -153,13 +160,14 @@ export default function DashboardLayout({
           </motion.div>
           
           <motion.div
+            initial="initial"
             whileHover="hover"
             whileTap="tap"
             variants={navItemVariants}
           >
             <NextLink
               href="/dashboard/lawyers"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
             >
               <Users className="h-5 w-5 text-gray-500" />
               <span>Find Lawyers</span>
@@ -167,13 +175,14 @@ export default function DashboardLayout({
           </motion.div>
           
           <motion.div
+            initial="initial"
             whileHover="hover"
             whileTap="tap"
             variants={navItemVariants}
           >
             <NextLink
               href="/dashboard/assistant"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
             >
               <MessageSquare className="h-5 w-5 text-gray-500" />
               <span>AI Assistant</span>
@@ -181,13 +190,14 @@ export default function DashboardLayout({
           </motion.div>
           
           <motion.div
+            initial="initial"
             whileHover="hover"
             whileTap="tap"
             variants={navItemVariants}
           >
             <NextLink
               href="/dashboard/documents"
-              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
             >
               <FileText className="h-5 w-5 text-gray-500" />
               <span>Documents</span>
@@ -196,13 +206,14 @@ export default function DashboardLayout({
           
           <div className="pt-4 mt-4 border-t border-gray-100">
             <motion.div
+              initial="initial"
               whileHover="hover"
               whileTap="tap"
               variants={navItemVariants}
             >
               <NextLink
                 href="/dashboard/settings"
-                className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
               >
                 <Settings className="h-5 w-5 text-gray-500" />
                 <span>Settings</span>
@@ -211,7 +222,8 @@ export default function DashboardLayout({
             
             <motion.button
               onClick={() => signOut()}
-              className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 rounded-lg transition-colors"
+              initial="initial"
               whileHover="hover"
               whileTap="tap"
               variants={navItemVariants}
