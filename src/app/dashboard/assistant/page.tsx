@@ -1,10 +1,10 @@
-// src/app/dashboard/assistant/page.tsx
 "use client"
-
 import { useState, useRef, useEffect } from 'react'
+import { default as NextLink } from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ReactMarkdown from 'react-markdown'
+import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Send, 
   Paperclip, 
@@ -20,29 +20,23 @@ import {
   Menu,
   X,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  Trash2,
+  Save,
+  MoreHorizontal,
+  Search
 } from 'lucide-react'
+import {
+  getChatHistory,
+  saveChat,
+  getActiveChatId,
+  setActiveChatId,
+  deleteChat,
+  generateChatTitle
+} from '@/lib/chatHistoryService'
+import type { Message, Chat } from '@/lib/chatHistoryService'
 
-// Define message interface
-interface Message {
-  id: string | number;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  streaming?: boolean;
-  error?: boolean;
-}
-
-// Define chat interface
-interface Chat {
-  id: string;
-  title: string;
-  preview: string;
-  lastActive: string;
-  messages: Message[];
-}
-
-// Example questions remain the same
+// 示例问题保持不变
 const suggestedQuestions = [
   "What's the difference between a will and a trust?",
   "How do I evict a tenant who hasn't paid rent?",
@@ -54,7 +48,7 @@ const suggestedQuestions = [
   "How can I contest a speeding ticket?",
 ]
 
-// Initial welcome message
+// 初始欢迎消息
 const initialMessages: Message[] = [
   {
     id: 1,
@@ -78,90 +72,8 @@ I can answer questions about:
   }
 ]
 
-// Sample chat history (in a real implementation, this would come from the API)
-const sampleChatHistory: Chat[] = [
-  {
-    id: 'chat-1',
-    title: 'Rental Agreement Question',
-    preview: 'What are my rights as a tenant?',
-    lastActive: '2025-03-10T14:30:00.000Z',
-    messages: [
-      {
-        id: '1a',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-10T14:25:00.000Z',
-      },
-      {
-        id: '2a',
-        role: 'user',
-        content: 'What are my rights as a tenant?',
-        timestamp: '2025-03-10T14:26:00.000Z',
-      },
-      {
-        id: '3a',
-        role: 'assistant',
-        content: '# Tenant Rights Overview\n\nAs a tenant, you generally have several key rights:\n\n1. **Right to habitable living conditions** - Your landlord must provide safe, sanitary housing\n2. **Right to privacy** - Landlords typically must provide notice before entering\n3. **Protection against illegal discrimination** - Based on protected characteristics\n4. **Right to your security deposit** - With proper documentation of damages\n5. **Protection against retaliatory actions** - Such as eviction for exercising legal rights\n\nThe specific rights can vary by location. *What state or country are you located in so I can provide more specific information?*',
-        timestamp: '2025-03-10T14:28:00.000Z',
-      }
-    ]
-  },
-  {
-    id: 'chat-2',
-    title: 'Contract Review Help',
-    preview: 'I need help understanding a contract clause.',
-    lastActive: '2025-03-09T10:15:00.000Z',
-    messages: [
-      {
-        id: '1b',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-09T10:10:00.000Z',
-      },
-      {
-        id: '2b',
-        role: 'user',
-        content: 'I need help understanding a contract clause.',
-        timestamp: '2025-03-09T10:12:00.000Z',
-      },
-      {
-        id: '3b',
-        role: 'assistant',
-        content: "I'd be happy to help you understand a contract clause. Could you please share the specific clause or section you're having trouble with?\n\nWhen analyzing contract clauses, I typically look at:\n\n- **Plain language meaning** - What the text literally states\n- **Context within the document** - How it relates to other provisions\n- **Legal terminology** - Any specialized terms with specific meanings\n- **Common interpretations** - How courts typically view similar language\n\nIf you can provide the exact wording, I'll do my best to explain it clearly.",
-        timestamp: '2025-03-09T10:15:00.000Z',
-      }
-    ]
-  },
-  {
-    id: 'chat-3',
-    title: 'Small Claims Court Question',
-    preview: 'How do I file in small claims court?',
-    lastActive: '2025-03-08T16:45:00.000Z',
-    messages: [
-      {
-        id: '1c',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-08T16:40:00.000Z',
-      },
-      {
-        id: '2c',
-        role: 'user',
-        content: 'How do I file in small claims court?',
-        timestamp: '2025-03-08T16:42:00.000Z',
-      },
-      {
-        id: '3c',
-        role: 'assistant',
-        content: '## Small Claims Court Filing Process\n\nFiling in small claims court typically involves these general steps:\n\n1. **Determine eligibility** - Verify your case qualifies for small claims (typically disputes under a certain dollar amount)\n2. **Identify jurisdiction** - Find the correct court for your location\n3. **Complete forms** - Fill out the required court documents\n4. **Pay filing fee** - Submit payment (fees vary by location)\n5. **Serve the defendant** - Formally notify the other party according to court rules\n6. **Prepare for hearing** - Gather evidence and organize your presentation\n\n> The specific process varies by location. Which state or jurisdiction are you in?\n\n*Note: Most small claims courts have self-help resources available on their websites.*',
-        timestamp: '2025-03-08T16:45:00.000Z',
-      }
-    ]
-  }
-]
-
 export default function AssistantPage() {
-  // State for chat functionality
+  // 状态管理
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -171,16 +83,17 @@ export default function AssistantPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [currentSuggestionPage, setCurrentSuggestionPage] = useState(0)
   
-  // State for history and UI functionality
-  const [chatHistory, setChatHistory] = useState<Chat[]>(sampleChatHistory)
+  // 历史记录和UI状态
+  const [chatHistory, setChatHistory] = useState<Chat[]>([])
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   
-  // Use mock mode instead of real API (toggle this based on your environment)
+  // 模拟模式设置
   const [useMockMode, setUseMockMode] = useState(true)
   const [apiStatusChecked, setApiStatusChecked] = useState(false)
   
+  // 搜索和分页配置
   const suggestionsPerPage = 4
   const totalSuggestionPages = Math.ceil(suggestedQuestions.length / suggestionsPerPage)
   const currentSuggestions = suggestedQuestions.slice(
@@ -188,18 +101,37 @@ export default function AssistantPage() {
     (currentSuggestionPage + 1) * suggestionsPerPage
   )
 
-  // Filter chat history based on search term
+  // 过滤聊天历史
   const filteredHistory = chatHistory.filter(chat => 
     chat.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     chat.preview.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Auto scroll to bottom of messages
+  // 自动滚动到消息底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Check API status on component mount
+  // 加载聊天历史记录
+  useEffect(() => {
+    const history = getChatHistory();
+    setChatHistory(history);
+    
+    // 获取活跃聊天ID
+    const storedActiveChatId = getActiveChatId();
+    if (storedActiveChatId) {
+      setActiveChatId(storedActiveChatId);
+      
+      // 加载活跃聊天内容
+      const activeChat = history.find(chat => chat.id === storedActiveChatId);
+      if (activeChat) {
+        setMessages(activeChat.messages);
+        setConversationId(activeChat.id);
+      }
+    }
+  }, []);
+
+  // 检查API状态
   useEffect(() => {
     async function checkApiStatus() {
       if (apiStatusChecked) return;
@@ -207,7 +139,7 @@ export default function AssistantPage() {
       try {
         console.log('正在检查API状态...');
         
-        // 修改1: 增加超时时间到5秒
+        // 增加超时时间到5秒
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('API超时')), 5000)
         );
@@ -215,10 +147,9 @@ export default function AssistantPage() {
         const apiUrl = getApiBaseUrl();
         console.log('尝试连接到API:', apiUrl);
         
-        // 修改2: 使用更简单的fetch请求，使用HEAD方法
+        // 使用更简单的fetch请求，使用HEAD方法
         const fetchPromise = fetch(`${apiUrl}/api/health`, { 
           method: 'HEAD',
-          // 确保不包含不必要的headers，减少CORS问题
           credentials: 'omit'
         });
         
@@ -233,18 +164,15 @@ export default function AssistantPage() {
         setUseMockMode(true);
         console.error('❌ API连接失败:', error instanceof Error ? error.message : String(error));
         console.log('使用模拟模式');
-        
-        // 显示更多诊断信息
-        console.log('网络诊断:');
-        console.log('- 目标API URL:', getApiBaseUrl());
-        console.log('- 检查服务器是否在该端口运行');
-        console.log('- 检查服务器的CORS配置');
-        console.log('- 检查浏览器控制台获取更详细的错误信息');
       }
       
       setApiStatusChecked(true);
-      createNewConversation();
-    };
+      
+      // 如果没有活跃会话，创建新会话
+      if (!conversationId) {
+        createNewConversation();
+      }
+    }
     
     checkApiStatus();
     
@@ -254,9 +182,9 @@ export default function AssistantPage() {
         eventSource.close();
       }
     };
-  }, [apiStatusChecked]);  
+  }, [apiStatusChecked, conversationId]);  
 
-  // Get API base URL from environment variable or use default
+  // 获取API基础URL
   const getApiBaseUrl = () => {
     // 优先使用环境变量中的API URL
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -265,7 +193,6 @@ export default function AssistantPage() {
     
     // 使用相对URL避免CORS问题
     if (typeof window !== 'undefined') {
-      // 使用相对路径，通过Next.js API路由代理请求
       return '/api/chat-backend';
     }
     
@@ -273,32 +200,37 @@ export default function AssistantPage() {
     return 'http://localhost:5000';
   }  
 
-  // Function to create a new conversation
+  // 创建新对话
   const createNewConversation = async () => {
     try {
-      // Clean up existing event source if any
+      // 清理现有事件源
       if (eventSource) {
         eventSource.close()
         setEventSource(null)
       }
       
+      // 重置消息
       setMessages(initialMessages)
       setInput('')
       setIsTyping(false)
       
+      // 清除活跃聊天ID
+      setActiveChatId(null)
+      setActiveChatId(null)
+      
       if (!useMockMode) {
         try {
-          // Try to create a real conversation with the API
+          // 尝试创建真实对话
           const response = await fetch(`${getApiBaseUrl()}/api/conversations/new`, {
             method: 'POST',
           })
           
           if (response.ok) {
             const data = await response.json()
-            setConversationId(data.id)
-            setActiveChatId(null) // Reset active chat
+            const newConversationId = data.id
+            setConversationId(newConversationId)
             
-            // Set initial assistant message from API response if available
+            // 设置初始助手消息
             if (data.messages && data.messages.length > 0) {
               setMessages(data.messages.map((msg: any) => ({
                 id: msg.id,
@@ -307,6 +239,18 @@ export default function AssistantPage() {
                 timestamp: msg.timestamp
               })))
             }
+            
+            // 创建并保存新聊天
+            const newChat: Chat = {
+              id: newConversationId,
+              title: "New Conversation",
+              preview: "Start a new conversation",
+              lastActive: new Date().toISOString(),
+              messages: [...messages]
+            }
+            
+            saveChat(newChat)
+            setChatHistory(prev => [newChat, ...prev])
           } else {
             console.warn('API response not OK, using mock mode')
             createMockConversation()
@@ -324,31 +268,62 @@ export default function AssistantPage() {
     }
   }
   
-  // Create a mock conversation when API is not available
+  // 创建模拟对话
   const createMockConversation = () => {
-    // Generate a mock conversation ID
+    // 生成模拟对话ID
     const mockId = `mock-${Date.now()}`
     setConversationId(mockId)
     setActiveChatId(null)
+    
+    // 创建并保存新聊天
+    const newChat: Chat = {
+      id: mockId,
+      title: "New Conversation",
+      preview: "Start a new conversation",
+      lastActive: new Date().toISOString(),
+      messages: [...initialMessages]
+    }
+    
+    saveChat(newChat)
+    setChatHistory(prev => [newChat, ...prev])
     console.log("Using mock conversation with ID:", mockId)
   }
   
-  // Load a conversation from history
+  // 加载历史对话
   const loadConversation = (chatId: string) => {
     const selectedChat = chatHistory.find(chat => chat.id === chatId)
     if (selectedChat) {
       setMessages(selectedChat.messages)
       setActiveChatId(chatId)
-      setIsHistoryOpen(false) // Close sidebar on mobile
+      setConversationId(chatId)
+      setActiveChatId(chatId)
+      setIsHistoryOpen(false) // 在移动设备上关闭侧边栏
+      
+      // 保存活跃聊天ID到本地存储
+      setActiveChatId(chatId)
     }
   }
 
-  // Handle form submission
+  // 删除对话
+  const deleteConversation = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // 防止点击事件冒泡触发加载对话
+    
+    // 从本地存储和状态中删除
+    deleteChat(chatId)
+    setChatHistory(prev => prev.filter(chat => chat.id !== chatId))
+    
+    // 如果删除的是当前活跃对话，创建新对话
+    if (chatId === activeChatId) {
+      createNewConversation()
+    }
+  }
+
+  // 处理表单提交
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !conversationId) return
     
-    // Add user message to state immediately
+    // 立即添加用户消息到状态
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -360,14 +335,37 @@ export default function AssistantPage() {
     setInput('')
     setIsTyping(true)
     
-    // Use mock mode or API based on setting
+    // 更新聊天标题（如果是第一条消息）
+    if (messages.length <= 1) { // 只有欢迎消息
+      const updatedChatHistory = chatHistory.map(chat => {
+        if (chat.id === conversationId) {
+          return {
+            ...chat,
+            title: generateChatTitle(input),
+            preview: input,
+            lastActive: new Date().toISOString()
+          }
+        }
+        return chat
+      })
+      
+      setChatHistory(updatedChatHistory)
+      
+      // 更新本地存储
+      const chatToUpdate = updatedChatHistory.find(chat => chat.id === conversationId)
+      if (chatToUpdate) {
+        saveChat(chatToUpdate)
+      }
+    }
+    
+    // 使用模拟模式或API
     if (useMockMode || conversationId.startsWith('mock-')) {
       handleMockResponse(userMessage)
       return
     }
     
     try {      
-      // Step 1: Send message to server
+      // 步骤1: 发送消息到服务器
       const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`, {
         method: 'POST',
         headers: {
@@ -383,11 +381,11 @@ export default function AssistantPage() {
       const data = await response.json()
       setMessageId(data.message_id)
       
-      // Step 2: Open SSE connection to receive streaming response
+      // 步骤2: 打开SSE连接接收流式响应
       const es = new EventSource(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`)
       setEventSource(es)
       
-      // Create a placeholder for the streaming response
+      // 创建流式响应的占位符
       const assistantPlaceholder: Message = {
         id: data.message_id,
         role: 'assistant',
@@ -402,41 +400,52 @@ export default function AssistantPage() {
         const eventData = JSON.parse(event.data)
         
         if (eventData.status === 'complete') {
-          // Stream is complete
+          // 流完成
           setIsTyping(false)
           es.close()
           setEventSource(null)
           
-          // After completing a message, update the chat history with this new conversation
-          const newChat: Chat = {
-            id: conversationId || `chat-${Date.now()}`,
-            title: userMessage.content.length > 30 
-              ? `${userMessage.content.substring(0, 30)}...` 
-              : userMessage.content,
-            preview: userMessage.content,
-            lastActive: new Date().toISOString(),
-            messages: [...messages, userMessage, {
-              ...assistantPlaceholder,
-              content: eventData.full_response || assistantPlaceholder.content,
-              streaming: false
-            }]
+          // 构建完整的消息
+          const completeMessage = {
+            ...assistantPlaceholder,
+            content: eventData.full_response || assistantPlaceholder.content,
+            streaming: false
           }
           
-          setChatHistory((prev: Chat[]) => {
-            // Check if we're updating an existing conversation or adding a new one
-            const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
+          // 更新消息列表
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === data.message_id ? completeMessage : msg
+            )
+          )
+          
+          // 完成后，更新聊天历史
+          const updatedMessages = [...messages.filter(msg => msg.id !== data.message_id), userMessage, completeMessage]
+          
+          const updatedChat: Chat = {
+            id: conversationId,
+            title: chatHistory.find(chat => chat.id === conversationId)?.title || generateChatTitle(userMessage.content),
+            preview: userMessage.content,
+            lastActive: new Date().toISOString(),
+            messages: updatedMessages
+          }
+          
+          // 更新状态和本地存储
+          setChatHistory(prev => {
+            const existingIndex = prev.findIndex(chat => chat.id === conversationId)
             if (existingIndex >= 0) {
               const updated = [...prev]
-              updated[existingIndex] = newChat
+              updated[existingIndex] = updatedChat
               return updated
             } else {
-              return [newChat, ...prev]
+              return [updatedChat, ...prev]
             }
           })
           
+          saveChat(updatedChat)
         } else if (eventData.chunk) {
-          // Update the message with new chunk
-          setMessages((prev: Message[]) => 
+          // 更新消息内容
+          setMessages(prev => 
             prev.map(msg => 
               msg.id === data.message_id 
                 ? { ...msg, content: eventData.full_response, streaming: true } 
@@ -444,22 +453,46 @@ export default function AssistantPage() {
             )
           )
         } else if (eventData.status === 'error') {
-          // Handle error
+          // 处理错误
           setIsTyping(false)
           es.close()
           setEventSource(null)
           
-          // Add error message
-          setMessages((prev: Message[]) => [
+          // 添加错误消息
+          const errorMessage: Message = {
+            id: data.message_id,
+            role: 'assistant',
+            content: 'Sorry, there was an error processing your request. Please try again later.',
+            timestamp: new Date().toISOString(),
+            error: true,
+          }
+          
+          setMessages(prev => [
             ...prev.filter(msg => msg.id !== data.message_id),
-            {
-              id: data.message_id,
-              role: 'assistant',
-              content: 'Sorry, there was an error processing your request. Please try again later.',
-              timestamp: new Date().toISOString(),
-              error: true,
-            }
+            errorMessage
           ])
+          
+          // 更新聊天历史
+          const updatedChat: Chat = {
+            id: conversationId,
+            title: chatHistory.find(chat => chat.id === conversationId)?.title || generateChatTitle(userMessage.content),
+            preview: userMessage.content,
+            lastActive: new Date().toISOString(),
+            messages: [...messages.filter(msg => msg.id !== data.message_id), userMessage, errorMessage]
+          }
+          
+          setChatHistory(prev => {
+            const existingIndex = prev.findIndex(chat => chat.id === conversationId)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = updatedChat
+              return updated
+            } else {
+              return [updatedChat, ...prev]
+            }
+          })
+          
+          saveChat(updatedChat)
         }
       }
       
@@ -468,40 +501,94 @@ export default function AssistantPage() {
         es.close()
         setEventSource(null)
         setIsTyping(false)
+        
+        // 添加错误消息
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Connection error. Please try again later.',
+          timestamp: new Date().toISOString(),
+          error: true,
+        }
+        
+        setMessages(prev => [...prev, errorMessage])
+        
+        // 更新聊天历史
+        const updatedChat: Chat = {
+          id: conversationId,
+          title: chatHistory.find(chat => chat.id === conversationId)?.title || generateChatTitle(userMessage.content),
+          preview: userMessage.content,
+          lastActive: new Date().toISOString(),
+          messages: [...messages, userMessage, errorMessage]
+        }
+        
+        setChatHistory(prev => {
+          const existingIndex = prev.findIndex(chat => chat.id === conversationId)
+          if (existingIndex >= 0) {
+            const updated = [...prev]
+            updated[existingIndex] = updatedChat
+            return updated
+          } else {
+            return [updatedChat, ...prev]
+          }
+        })
+        
+        saveChat(updatedChat)
       }
       
     } catch (error) {
       console.error('Error sending message:', error)
       setIsTyping(false)
       
-      // If API fails, use mock mode
+      // 如果API失败，使用模拟模式
       if (conversationId && !conversationId.startsWith('mock-')) {
         console.log('Switching to mock mode for response')
         handleMockResponse(userMessage)
       } else {
-        // Add error message
-        setMessages((prev: Message[]) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
-            timestamp: new Date().toISOString(),
-            error: true,
+        // 添加错误消息
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+          timestamp: new Date().toISOString(),
+          error: true,
+        }
+        
+        setMessages(prev => [...prev, errorMessage])
+        
+        // 更新聊天历史
+        const updatedChat: Chat = {
+          id: conversationId,
+          title: chatHistory.find(chat => chat.id === conversationId)?.title || generateChatTitle(userMessage.content),
+          preview: userMessage.content,
+          lastActive: new Date().toISOString(),
+          messages: [...messages, userMessage, errorMessage]
+        }
+        
+        setChatHistory(prev => {
+          const existingIndex = prev.findIndex(chat => chat.id === conversationId)
+          if (existingIndex >= 0) {
+            const updated = [...prev]
+            updated[existingIndex] = updatedChat
+            return updated
+          } else {
+            return [updatedChat, ...prev]
           }
-        ])
+        })
+        
+        saveChat(updatedChat)
       }
     }
   }
   
-  // Handle mock responses when API is not available
+  // 处理模拟响应
   const handleMockResponse = (userMessage: Message) => {
-    // Simulate typing delay
+    // 模拟打字延迟
     setTimeout(() => {
-      // Create a response based on the user's message
+      // 创建基于用户消息的响应
       let responseContent = ''
       
-      // Simple keyword matching for demo purposes
+      // 简单的关键词匹配
       const lowerCaseMessage = userMessage.content.toLowerCase()
       
       if (lowerCaseMessage.includes('hello') || lowerCaseMessage.includes('hi')) {
@@ -516,7 +603,7 @@ export default function AssistantPage() {
         responseContent = "I understand you're asking about: \"" + userMessage.content + "\"\n\nThis is a complex legal topic that can vary by jurisdiction. Could you provide more details about your specific situation so I can give you more relevant information?"
       }
       
-      // Create the response message
+      // 创建响应消息
       const mockResponse: Message = {
         id: Date.now().toString(),
         role: 'assistant',
@@ -524,35 +611,39 @@ export default function AssistantPage() {
         timestamp: new Date().toISOString(),
       }
       
-      // Add the response to messages
-      setMessages((prev: Message[]) => [...prev, mockResponse])
+      // 添加响应到消息列表
+      setMessages(prev => [...prev, mockResponse])
       setIsTyping(false)
       
-      // Update chat history
-      const newChat: Chat = {
+      // 更新聊天历史
+      const title = chatHistory.find(chat => chat.id === conversationId)?.title || 
+                   generateChatTitle(userMessage.content)
+      
+      const updatedChat: Chat = {
         id: conversationId || `chat-${Date.now()}`,
-        title: userMessage.content.length > 30 
-          ? `${userMessage.content.substring(0, 30)}...` 
-          : userMessage.content,
+        title: title,
         preview: userMessage.content,
         lastActive: new Date().toISOString(),
         messages: [...messages, userMessage, mockResponse]
       }
       
-      setChatHistory((prev: Chat[]) => {
-        const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
+      setChatHistory(prev => {
+        const existingIndex = prev.findIndex(chat => chat.id === updatedChat.id)
         if (existingIndex >= 0) {
           const updated = [...prev]
-          updated[existingIndex] = newChat
+          updated[existingIndex] = updatedChat
           return updated
         } else {
-          return [newChat, ...prev]
+          return [updatedChat, ...prev]
         }
       })
-    }, 1500) // Simulate typing delay
+      
+      // 保存到本地存储
+      saveChat(updatedChat)
+    }, 1500) // 模拟打字延迟
   }
 
-  // Handle suggestion click
+  // 处理建议点击
   const handleSuggestionClick = (question: string) => {
     setInput(question)
     setTimeout(() => {
@@ -560,7 +651,7 @@ export default function AssistantPage() {
     }, 100)
   }
 
-  // Get pages of suggestions
+  // 获取建议页
   const nextSuggestionPage = () => {
     setCurrentSuggestionPage((prev) => 
       prev === totalSuggestionPages - 1 ? 0 : prev + 1
@@ -573,69 +664,265 @@ export default function AssistantPage() {
     )
   }
 
-  // Format timestamp
+  // 格式化时间戳
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   }
   
-  // Format date for chat history
+  // 格式化聊天历史日期
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp)
     const now = new Date()
     
-    // Same day
+    // 同一天
     if (date.toDateString() === now.toDateString()) {
       return 'Today'
     }
     
-    // Yesterday
+    // 昨天
     const yesterday = new Date(now)
     yesterday.setDate(now.getDate() - 1)
     if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday'
     }
     
-    // Within last 7 days
+    // 一周内
     const oneWeekAgo = new Date(now)
     oneWeekAgo.setDate(now.getDate() - 7)
     if (date > oneWeekAgo) {
       return date.toLocaleDateString('en-US', { weekday: 'long' })
     }
     
-    // Older than a week
+    // 超过一周
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  // Main content
+  // 动画变体
+  const sidebarVariants = {
+    hidden: { x: "-100%", opacity: 0 },
+    visible: { 
+      x: 0, 
+      opacity: 1,
+      transition: { 
+        type: "spring", 
+        stiffness: 300, 
+        damping: 30 
+      }
+    },
+    exit: { 
+      x: "-100%", 
+      opacity: 0,
+      transition: { 
+        duration: 0.2, 
+        ease: "easeInOut" 
+      }
+    }
+  };
+
+  const messageVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      transition: { duration: 0.3 }
+    },
+    exit: { 
+      opacity: 0, 
+      y: -10,
+      transition: { duration: 0.2 }
+    }
+  };
+
+  const chatItemVariants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: (i: number) => ({ 
+      opacity: 1, 
+      x: 0,
+      transition: { 
+        delay: i * 0.05,
+        duration: 0.2
+      }
+    }),
+    exit: { 
+      opacity: 0, 
+      x: -10,
+      transition: { duration: 0.1 }
+    },
+    hover: { 
+      backgroundColor: "rgba(59, 130, 246, 0.1)",
+      transition: { duration: 0.2 }
+    }
+  };
+
+  // 主内容
   return (
     <div className="flex h-[calc(100vh-4rem)]">
-      {/* Chat history sidebar */}
-      <div 
-        className={`fixed inset-y-0 left-0 z-20 mt-16 w-72 bg-white shadow-lg transform transition-transform duration-200 ease-in-out ${
-          isHistoryOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:relative md:translate-x-0 md:mt-0`}
-      >
+      {/* 聊天历史侧边栏 */}
+      <AnimatePresence>
+        {isHistoryOpen && (
+          <motion.div 
+            className="fixed inset-y-0 left-0 z-20 mt-16 w-72 bg-white shadow-lg"
+            variants={sidebarVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            layout
+          >
+            <div className="flex flex-col h-full">
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Chat History</h2>
+                  <motion.button 
+                    className="md:hidden p-1 text-gray-500 hover:text-gray-700"
+                    onClick={() => setIsHistoryOpen(false)}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <X className="h-5 w-5" />
+                  </motion.button>
+                </div>
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Button 
+                    className="w-full bg-blue-900 hover:bg-blue-800 flex items-center justify-center"
+                    onClick={createNewConversation}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Chat
+                  </Button>
+                </motion.div>
+                
+                {/* 搜索输入框 */}
+                <div className="relative mt-4">
+                  <Input
+                    type="text"
+                    placeholder="Search conversations"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8"
+                  />
+                  <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                  </div>
+                  {searchTerm && (
+                    <motion.button
+                      className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                      onClick={() => setSearchTerm('')}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <X className="h-4 w-4" />
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+              
+              {/* API状态指示器 */}
+              {useMockMode && (
+                <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                  <div className="flex items-center text-amber-800 text-xs">
+                    <AlertTriangle className="h-4 w-4 mr-1" />
+                    <span>Demo Mode: Using simulated responses</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* 聊天历史列表 */}
+              <div className="flex-1 overflow-y-auto">
+                <AnimatePresence>
+                  {filteredHistory.length > 0 ? (
+                    <motion.div 
+                      className="divide-y"
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                    >
+                      {filteredHistory.map((chat, index) => (
+                        <motion.button
+                          key={chat.id}
+                          className={`w-full text-left p-4 hover:bg-gray-50 transition-colors relative ${
+                            activeChatId === chat.id ? 'bg-blue-50 border-l-4 border-blue-600' : ''
+                          }`}
+                          onClick={() => loadConversation(chat.id)}
+                          variants={chatItemVariants}
+                          custom={index}
+                          whileHover="hover"
+                          layoutId={`chat-${chat.id}`}
+                        >
+                          <div className="flex items-start">
+                            <div className="flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+                              <MessageSquare className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="ml-3 pr-6">
+                              <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
+                              <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
+                              <div className="flex items-center mt-1 text-xs text-gray-400">
+                                <Clock className="h-3 w-3 mr-1" />
+                                <span>{formatDate(chat.lastActive)}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <motion.button
+                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => deleteConversation(chat.id, e)}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </motion.button>
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      className="p-4 text-center text-gray-500"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      <p>No conversations found</p>
+                      {searchTerm && (
+                        <motion.button 
+                          className="text-blue-600 mt-2 text-sm"
+                          onClick={() => setSearchTerm('')}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                        >
+                          Clear search
+                        </motion.button>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className={`hidden md:block md:w-72 md:border-r ${isHistoryOpen ? '' : ''}`}>
         <div className="flex flex-col h-full">
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Chat History</h2>
-              <button 
-                className="md:hidden p-1 text-gray-500 hover:text-gray-700"
-                onClick={() => setIsHistoryOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
-            <Button 
-              className="w-full bg-blue-900 hover:bg-blue-800 flex items-center justify-center"
-              onClick={createNewConversation}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              New Chat
-            </Button>
+              <Button 
+                className="w-full bg-blue-900 hover:bg-blue-800 flex items-center justify-center"
+                onClick={createNewConversation}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Chat
+              </Button>
+            </motion.div>
             
-            {/* Search input */}
+            {/* 搜索输入框 */}
             <div className="relative mt-4">
               <Input
                 type="text"
@@ -645,14 +932,22 @@ export default function AssistantPage() {
                 className="pl-8"
               />
               <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <Search className="h-4 w-4 text-gray-400" />
               </div>
+              {searchTerm && (
+                <motion.button
+                  className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                  onClick={() => setSearchTerm('')}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <X className="h-4 w-4" />
+                </motion.button>
+              )}
             </div>
           </div>
           
-          {/* API status indicator */}
+          {/* API状态指示器 */}
           {useMockMode && (
             <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
               <div className="flex items-center text-amber-800 text-xs">
@@ -662,200 +957,299 @@ export default function AssistantPage() {
             </div>
           )}
           
-          {/* Chat list */}
+          {/* 聊天历史列表 */}
           <div className="flex-1 overflow-y-auto">
-            {filteredHistory.length > 0 ? (
-              <div className="divide-y">
-                {filteredHistory.map((chat) => (
-                  <button
-                    key={chat.id}
-                    className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
-                      activeChatId === chat.id ? 'bg-blue-50 border-l-4 border-blue-600' : ''
-                    }`}
-                    onClick={() => loadConversation(chat.id)}
-                  >
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
-                        <MessageSquare className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div className="ml-3">
-                        <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
-                        <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
-                        <div className="flex items-center mt-1 text-xs text-gray-400">
-                          <Clock className="h-3 w-3 mr-1" />
-                          <span>{formatDate(chat.lastActive)}</span>
+            <AnimatePresence>
+              {filteredHistory.length > 0 ? (
+                <motion.div 
+                  className="divide-y"
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  {filteredHistory.map((chat, index) => (
+                    <motion.div
+                      key={chat.id}
+                      className={`group w-full text-left p-4 hover:bg-gray-50 transition-colors relative ${
+                        activeChatId === chat.id ? 'bg-blue-50 border-l-4 border-blue-600' : ''
+                      }`}
+                      variants={chatItemVariants}
+                      custom={index}
+                      whileHover="hover"
+                    >
+                      <button 
+                        className="w-full text-left"
+                        onClick={() => loadConversation(chat.id)}
+                      >
+                        <div className="flex items-start">
+                          <div className="flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
+                            <MessageSquare className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div className="ml-3 pr-8">
+                            <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
+                            <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
+                            <div className="flex items-center mt-1 text-xs text-gray-400">
+                              <Clock className="h-3 w-3 mr-1" />
+                              <span>{formatDate(chat.lastActive)}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 text-center text-gray-500">
-                <p>No conversations found</p>
-                {searchTerm && (
-                  <button 
-                    className="text-blue-600 mt-2 text-sm"
-                    onClick={() => setSearchTerm('')}
-                  >
-                    Clear search
-                  </button>
-                )}
-              </div>
-            )}
+                      </button>
+                      <motion.button
+                        className="absolute top-4 right-4 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => deleteConversation(chat.id, e)}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </motion.button>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div 
+                  className="p-4 text-center text-gray-500"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <p>No conversations found</p>
+                  {searchTerm && (
+                    <motion.button 
+                      className="text-blue-600 mt-2 text-sm"
+                      onClick={() => setSearchTerm('')}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      Clear search
+                    </motion.button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
-      {/* Main chat area */}
+      {/* 主聊天区域 */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Chat header */}
+        {/* 聊天头部 */}
         <div className="bg-white border-b p-4 flex items-center justify-between">
           <div className="flex items-center">
-            <button
+            <motion.button
               className="md:hidden mr-3 p-1 text-gray-500 hover:text-gray-700"
               onClick={() => setIsHistoryOpen(true)}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
             >
               <Menu className="h-5 w-5" />
-            </button>
+            </motion.button>
             <h2 className="text-lg font-medium">
               {activeChatId 
                 ? chatHistory.find(chat => chat.id === activeChatId)?.title || 'Chat' 
                 : 'New Chat'}
             </h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={createNewConversation}
-            className="flex items-center"
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <Plus className="h-4 w-4 mr-1" />
-            New Chat
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={createNewConversation}
+              className="flex items-center"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              New Chat
+            </Button>
+          </motion.div>
         </div>
         
-        {/* Chat messages */}
+        {/* 聊天消息 */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="max-w-3xl mx-auto">
-            <div className="space-y-6">
-              {messages.map(message => (
-                <div 
-                  key={message.id} 
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`flex max-w-xl ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <div 
-                      className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center ${
-                        message.role === 'user' 
-                          ? 'bg-blue-100 ml-3' 
-                          : 'bg-amber-100 mr-3'
-                      }`}
-                    >
-                      {message.role === 'user' ? (
-                        <User className="h-5 w-5 text-blue-700" />
-                      ) : (
-                        <FileText className="h-5 w-5 text-amber-700" />
-                      )}
-                    </div>
-                    
-                    <div>
-                      <div 
-                        className={`relative px-4 py-3 rounded-lg 
-                          ${message.role === 'user' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-white border border-gray-200 text-gray-900'}`}
+            <AnimatePresence mode="popLayout">
+              <div className="space-y-6">
+                {messages.map(message => (
+                  <motion.div 
+                    key={message.id} 
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    variants={messageVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    layout
+                  >
+                    <div className={`flex max-w-xl ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <motion.div 
+                        className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center ${
+                          message.role === 'user' 
+                            ? 'bg-blue-100 ml-3' 
+                            : 'bg-amber-100 mr-3'
+                        }`}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.1 }}
                       >
-                        <div className="markdown-content">
-                          <ReactMarkdown>
-                            {message.content}
-                          </ReactMarkdown>
-                        </div>
-                        <span 
-                          className={`text-xs absolute bottom-1 ${
-                            message.role === 'user' ? 'right-2 text-blue-200' : 'left-2 text-gray-400'
-                          }`}
-                        >
-                          {formatTime(message.timestamp)}
-                        </span>
-                      </div>
+                        {message.role === 'user' ? (
+                          <User className="h-5 w-5 text-blue-700" />
+                        ) : (
+                          <FileText className="h-5 w-5 text-amber-700" />
+                        )}
+                      </motion.div>
                       
-                      {message.role === 'assistant' && !message.streaming && (
-                        <div className="flex items-center mt-1 ml-1 space-x-2">
-                          <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full">
-                            <ThumbsUp className="h-4 w-4" />
-                          </button>
-                          <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full">
-                            <ThumbsDown className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              {/* Show typing indicator */}
-              {isTyping && !messages.some(msg => msg.streaming) && (
-                <div className="flex justify-start">
-                  <div className="flex flex-row">
-                    <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center bg-amber-100 mr-3">
-                      <FileText className="h-5 w-5 text-amber-700" />
-                    </div>
-                    <div className="bg-white border border-gray-200 px-4 py-3 rounded-lg">
-                      <div className="flex space-x-1">
-                        <div className="h-2 w-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="h-2 w-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="h-2 w-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div>
+                        <motion.div 
+                          className={`relative px-4 py-3 rounded-lg 
+                            ${message.role === 'user' 
+                              ? 'bg-blue-600 text-white' 
+                              : 'bg-white border border-gray-200 text-gray-900'}`}
+                          initial={{ scale: 0.95, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: 0.2 }}
+                        >
+                          <div className="markdown-content">
+                            <ReactMarkdown>
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                          <span 
+                            className={`text-xs absolute bottom-1 ${
+                              message.role === 'user' ? 'right-2 text-blue-200' : 'left-2 text-gray-400'
+                            }`}
+                          >
+                            {formatTime(message.timestamp)}
+                          </span>
+                        </motion.div>
+                        
+                        {message.role === 'assistant' && !message.streaming && (
+                          <motion.div 
+                            className="flex items-center mt-1 ml-1 space-x-2"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.4 }}
+                          >
+                            <motion.button 
+                              className="p-1 text-gray-400 hover:text-gray-600 rounded-full"
+                              whileHover={{ scale: 1.2 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <ThumbsUp className="h-4 w-4" />
+                            </motion.button>
+                            <motion.button 
+                              className="p-1 text-gray-400 hover:text-gray-600 rounded-full"
+                              whileHover={{ scale: 1.2 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <ThumbsDown className="h-4 w-4" />
+                            </motion.button>
+                          </motion.div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
-              
-              <div ref={messagesEndRef} />
-            </div>
+                  </motion.div>
+                ))}
+                
+                {/* 显示打字指示器 */}
+                {isTyping && !messages.some(msg => msg.streaming) && (
+                  <motion.div 
+                    className="flex justify-start"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    <div className="flex flex-row">
+                      <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center bg-amber-100 mr-3">
+                        <FileText className="h-5 w-5 text-amber-700" />
+                      </div>
+                      <div className="bg-white border border-gray-200 px-4 py-3 rounded-lg">
+                        <div className="flex space-x-1">
+                          <motion.div 
+                            className="h-2 w-2 bg-gray-300 rounded-full"
+                            animate={{ y: [0, -5, 0] }}
+                            transition={{ duration: 1, repeat: Infinity, repeatDelay: 0.2 }}
+                          ></motion.div>
+                          <motion.div 
+                            className="h-2 w-2 bg-gray-300 rounded-full"
+                            animate={{ y: [0, -5, 0] }}
+                            transition={{ duration: 1, repeat: Infinity, repeatDelay: 0.2, delay: 0.1 }}
+                          ></motion.div>
+                          <motion.div 
+                            className="h-2 w-2 bg-gray-300 rounded-full"
+                            animate={{ y: [0, -5, 0] }}
+                            transition={{ duration: 1, repeat: Infinity, repeatDelay: 0.2, delay: 0.2 }}
+                          ></motion.div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                
+                <div ref={messagesEndRef} />
+              </div>
+            </AnimatePresence>
           </div>
         </div>
         
-        {/* Suggested questions */}
-        {messages.length < 3 && (
-          <div className="border-t bg-gray-50 py-4">
-            <div className="max-w-3xl mx-auto px-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Suggested questions</h3>
-              <div className="flex items-center">
-                <button 
-                  onClick={prevSuggestionPage}
-                  className="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200 mr-2"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-grow">
-                  {currentSuggestions.map((question, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleSuggestionClick(question)}
-                      className="p-3 text-left border rounded-lg bg-white hover:bg-gray-100 text-gray-900 flex justify-between items-center"
-                    >
-                      <span className="text-sm">{question}</span>
-                      <ArrowRight className="h-4 w-4 text-gray-500" />
-                    </button>
-                  ))}
+        {/* 建议问题 */}
+        <AnimatePresence>
+          {messages.length < 3 && (
+            <motion.div 
+              className="border-t bg-gray-50 py-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="max-w-3xl mx-auto px-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Suggested questions</h3>
+                <div className="flex items-center">
+                  <motion.button 
+                    onClick={prevSuggestionPage}
+                    className="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200 mr-2"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </motion.button>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-grow">
+                    <AnimatePresence mode="wait">
+                      {currentSuggestions.map((question, index) => (
+                        <motion.button
+                          key={`${currentSuggestionPage}-${index}`}
+                          onClick={() => handleSuggestionClick(question)}
+                          className="p-3 text-left border rounded-lg bg-white hover:bg-gray-100 text-gray-900 flex justify-between items-center"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ delay: index * 0.1 }}
+                          whileHover={{ scale: 1.02, backgroundColor: 'rgba(243, 244, 246, 1)' }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <span className="text-sm">{question}</span>
+                          <ArrowRight className="h-4 w-4 text-gray-500" />
+                        </motion.button>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                  
+                  <motion.button 
+                    onClick={nextSuggestionPage}
+                    className="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200 ml-2"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </motion.button>
                 </div>
-                
-                <button 
-                  onClick={nextSuggestionPage}
-                  className="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-200 ml-2"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         
-        {/* Input area */}
+        {/* 输入区域 */}
         <div className="border-t bg-white p-4">
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSubmit} className="flex items-end space-x-2">
@@ -868,24 +1262,31 @@ export default function AssistantPage() {
                     className="flex-grow border-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
                     disabled={!conversationId || isTyping}
                   />
-                  <button 
+                  <motion.button 
                     type="button"
                     className="p-1 text-gray-400 hover:text-gray-600"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                   >
                     <Paperclip className="h-5 w-5" />
-                  </button>
+                  </motion.button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
                   This AI assistant provides general information, not legal advice.
                 </p>
               </div>
-              <Button 
-                type="submit" 
-                className="bg-blue-900 hover:bg-blue-800"
-                disabled={!input.trim() || !conversationId || isTyping}
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                <Send className="h-4 w-4" />
-              </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-blue-900 hover:bg-blue-800"
+                  disabled={!input.trim() || !conversationId || isTyping}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </motion.div>
             </form>
           </div>
         </div>
