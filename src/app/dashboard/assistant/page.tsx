@@ -20,8 +20,20 @@ import {
   Menu,
   X,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  Save,
+  Trash2
 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
+import { 
+  saveChat, 
+  getChat, 
+  getChatHistory, 
+  getActiveChatId, 
+  setActiveChatId, 
+  deleteChat, 
+  generateChatTitle 
+} from '@/lib/chatHistoryService'
 
 // Define message interface
 interface Message {
@@ -76,88 +88,6 @@ I can answer questions about:
 
 *Just type your question below to get started!*`,
     timestamp: new Date().toISOString(),
-  }
-]
-
-// Sample chat history (in a real implementation, this would come from the API)
-const sampleChatHistory: Chat[] = [
-  {
-    id: 'chat-1',
-    title: 'Rental Agreement Question',
-    preview: 'What are my rights as a tenant?',
-    lastActive: '2025-03-10T14:30:00.000Z',
-    messages: [
-      {
-        id: '1a',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-10T14:25:00.000Z',
-      },
-      {
-        id: '2a',
-        role: 'user',
-        content: 'What are my rights as a tenant?',
-        timestamp: '2025-03-10T14:26:00.000Z',
-      },
-      {
-        id: '3a',
-        role: 'assistant',
-        content: '# Tenant Rights Overview\n\nAs a tenant, you generally have several key rights:\n\n1. **Right to habitable living conditions** - Your landlord must provide safe, sanitary housing\n2. **Right to privacy** - Landlords typically must provide notice before entering\n3. **Protection against illegal discrimination** - Based on protected characteristics\n4. **Right to your security deposit** - With proper documentation of damages\n5. **Protection against retaliatory actions** - Such as eviction for exercising legal rights\n\nThe specific rights can vary by location. *What state or country are you located in so I can provide more specific information?*',
-        timestamp: '2025-03-10T14:28:00.000Z',
-      }
-    ]
-  },
-  {
-    id: 'chat-2',
-    title: 'Contract Review Help',
-    preview: 'I need help understanding a contract clause.',
-    lastActive: '2025-03-09T10:15:00.000Z',
-    messages: [
-      {
-        id: '1b',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-09T10:10:00.000Z',
-      },
-      {
-        id: '2b',
-        role: 'user',
-        content: 'I need help understanding a contract clause.',
-        timestamp: '2025-03-09T10:12:00.000Z',
-      },
-      {
-        id: '3b',
-        role: 'assistant',
-        content: "I'd be happy to help you understand a contract clause. Could you please share the specific clause or section you're having trouble with?\n\nWhen analyzing contract clauses, I typically look at:\n\n- **Plain language meaning** - What the text literally states\n- **Context within the document** - How it relates to other provisions\n- **Legal terminology** - Any specialized terms with specific meanings\n- **Common interpretations** - How courts typically view similar language\n\nIf you can provide the exact wording, I'll do my best to explain it clearly.",
-        timestamp: '2025-03-09T10:15:00.000Z',
-      }
-    ]
-  },
-  {
-    id: 'chat-3',
-    title: 'Small Claims Court Question',
-    preview: 'How do I file in small claims court?',
-    lastActive: '2025-03-08T16:45:00.000Z',
-    messages: [
-      {
-        id: '1c',
-        role: 'assistant',
-        content: 'Hello! How can I help you today?',
-        timestamp: '2025-03-08T16:40:00.000Z',
-      },
-      {
-        id: '2c',
-        role: 'user',
-        content: 'How do I file in small claims court?',
-        timestamp: '2025-03-08T16:42:00.000Z',
-      },
-      {
-        id: '3c',
-        role: 'assistant',
-        content: '## Small Claims Court Filing Process\n\nFiling in small claims court typically involves these general steps:\n\n1. **Determine eligibility** - Verify your case qualifies for small claims (typically disputes under a certain dollar amount)\n2. **Identify jurisdiction** - Find the correct court for your location\n3. **Complete forms** - Fill out the required court documents\n4. **Pay filing fee** - Submit payment (fees vary by location)\n5. **Serve the defendant** - Formally notify the other party according to court rules\n6. **Prepare for hearing** - Gather evidence and organize your presentation\n\n> The specific process varies by location. Which state or jurisdiction are you in?\n\n*Note: Most small claims courts have self-help resources available on their websites.*',
-        timestamp: '2025-03-08T16:45:00.000Z',
-      }
-    ]
   }
 ]
 
@@ -330,6 +260,18 @@ const animationStyles = `
     white-space: nowrap;
     animation: typing 1.5s steps(40, end);
   }
+  
+  /* Save indicator animation */
+  @keyframes fadeInOut {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  
+  .save-indicator {
+    animation: fadeInOut 2s ease-in-out;
+  }
 `;
 
 export default function AssistantPage() {
@@ -346,11 +288,12 @@ export default function AssistantPage() {
   const [pageTransitionDirection, setPageTransitionDirection] = useState<'next' | 'prev'>('next')
   
   // State for history and UI functionality
-  const [chatHistory, setChatHistory] = useState<Chat[]>(sampleChatHistory)
+  const [chatHistory, setChatHistory] = useState<Chat[]>([])
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoadingChat, setIsLoadingChat] = useState(false)
+  const [showSaveIndicator, setShowSaveIndicator] = useState(false)
   
   // Animation states
   const [fadeInSuggestions, setFadeInSuggestions] = useState(true)
@@ -366,6 +309,24 @@ export default function AssistantPage() {
     currentSuggestionPage * suggestionsPerPage, 
     (currentSuggestionPage + 1) * suggestionsPerPage
   )
+
+  // Load saved chat history from localStorage on initial mount
+  useEffect(() => {
+    const savedHistory = getChatHistory()
+    if (savedHistory.length > 0) {
+      setChatHistory(savedHistory)
+    }
+    
+    const activeId = getActiveChatId()
+    if (activeId) {
+      setActiveChatId(activeId)
+      const activeChat = getChat(activeId)
+      if (activeChat) {
+        setConversationId(activeId)
+        setMessages(activeChat.messages)
+      }
+    }
+  }, [])
 
   // Filter chat history based on search term
   const filteredHistory = chatHistory.filter(chat => 
@@ -394,6 +355,38 @@ export default function AssistantPage() {
     
     return () => clearTimeout(timeoutId)
   }, [messages])
+
+  // Save chat to localStorage when messages or conversationId changes
+  useEffect(() => {
+    if (conversationId && messages.length > 0) {
+      const currentChat: Chat = {
+        id: conversationId,
+        title: generateChatTitle(
+          messages.find(msg => msg.role === 'user')?.content || 'New Conversation'
+        ),
+        preview: messages.find(msg => msg.role === 'user')?.content || 'Start a new conversation',
+        lastActive: new Date().toISOString(),
+        messages: messages
+      }
+      
+      saveChat(currentChat)
+      setActiveChatId(conversationId)
+      
+      // Show save indicator
+      setShowSaveIndicator(true)
+      const timer = setTimeout(() => {
+        setShowSaveIndicator(false)
+      }, 2000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [messages, conversationId])
+
+  // Update chat history in state when active chat changes
+  useEffect(() => {
+    const savedHistory = getChatHistory()
+    setChatHistory(savedHistory)
+  }, [activeChatId, conversationId])
 
   // Check API status on component mount
   useEffect(() => {
@@ -439,6 +432,19 @@ export default function AssistantPage() {
       }
       
       setApiStatusChecked(true);
+      
+      // 检查是否有活跃对话，如果没有则创建新对话
+      const activeId = getActiveChatId();
+      if (activeId) {
+        const activeChat = getChat(activeId);
+        if (activeChat) {
+          setConversationId(activeId);
+          setMessages(activeChat.messages);
+          setActiveChatId(activeId);
+          return;
+        }
+      }
+      
       createNewConversation();
     };
     
@@ -498,9 +504,28 @@ export default function AssistantPage() {
       // Short delay for animation
       await new Promise(resolve => setTimeout(resolve, 150));
       
-      setMessages([...initialMessages].map(msg => ({ ...msg, isNew: true })));
+      // Generate a new conversation ID
+      const newConversationId = `conv-${Date.now()}`;
+      setConversationId(newConversationId);
+      setActiveChatId(newConversationId);
+      
+      // Set initial messages
+      const newMessages = [...initialMessages].map(msg => ({ ...msg, isNew: true }));
+      setMessages(newMessages);
       setInput('');
       setIsTyping(false);
+      
+      // Save the new conversation
+      const newChat: Chat = {
+        id: newConversationId,
+        title: 'New Conversation',
+        preview: 'Start a new conversation',
+        lastActive: new Date().toISOString(),
+        messages: newMessages
+      };
+      
+      saveChat(newChat);
+      setChatHistory(getChatHistory());
       
       if (!useMockMode) {
         try {
@@ -512,7 +537,6 @@ export default function AssistantPage() {
           if (response.ok) {
             const data = await response.json()
             setConversationId(data.id)
-            setActiveChatId(null) // Reset active chat
             
             // Set initial assistant message from API response if available
             if (data.messages && data.messages.length > 0) {
@@ -523,6 +547,24 @@ export default function AssistantPage() {
                 timestamp: msg.timestamp,
                 isNew: true
               })))
+              
+              // Save the conversation with API data
+              const apiChat: Chat = {
+                id: data.id,
+                title: 'New Conversation',
+                preview: 'Start a new conversation',
+                lastActive: new Date().toISOString(),
+                messages: data.messages.map((msg: any) => ({
+                  id: msg.id,
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: msg.timestamp
+                }))
+              };
+              
+              saveChat(apiChat);
+              setActiveChatId(data.id);
+              setChatHistory(getChatHistory());
             }
           } else {
             console.warn('API response not OK, using mock mode')
@@ -553,7 +595,19 @@ export default function AssistantPage() {
     // Generate a mock conversation ID
     const mockId = `mock-${Date.now()}`
     setConversationId(mockId)
-    setActiveChatId(null)
+    setActiveChatId(mockId)
+    
+    // Create and save the mock conversation
+    const mockChat: Chat = {
+      id: mockId,
+      title: 'New Conversation',
+      preview: 'Start a new conversation',
+      lastActive: new Date().toISOString(),
+      messages: initialMessages
+    };
+    
+    saveChat(mockChat);
+    setChatHistory(getChatHistory());
     console.log("Using mock conversation with ID:", mockId)
   }
   
@@ -563,12 +617,15 @@ export default function AssistantPage() {
     
     // Add a small delay for animation
     setTimeout(() => {
-      const selectedChat = chatHistory.find(chat => chat.id === chatId)
+      const selectedChat = getChat(chatId);
+      
       if (selectedChat) {
-        setMessages(selectedChat.messages.map(msg => ({...msg, isNew: true})))
-        setActiveChatId(chatId)
-        setIsHistoryOpen(false) // Close sidebar on mobile
+        setMessages(selectedChat.messages.map(msg => ({...msg, isNew: true})));
+        setConversationId(chatId);
+        setActiveChatId(chatId);
+        setIsHistoryOpen(false); // Close sidebar on mobile
       }
+      
       setIsLoadingChat(false);
     }, 300);
   }
@@ -590,6 +647,21 @@ export default function AssistantPage() {
     setMessages((prev: Message[]) => [...prev, userMessage])
     setInput('')
     setIsTyping(true)
+    
+    // Update chat with user message
+    const currentChat = getChat(conversationId);
+    if (currentChat) {
+      const updatedChat: Chat = {
+        ...currentChat,
+        title: generateChatTitle(userMessage.content),
+        preview: userMessage.content,
+        lastActive: new Date().toISOString(),
+        messages: [...currentChat.messages, userMessage]
+      };
+      
+      saveChat(updatedChat);
+      setChatHistory(getChatHistory());
+    }
     
     // Use mock mode or API based on setting
     if (useMockMode || conversationId.startsWith('mock-')) {
@@ -630,6 +702,18 @@ export default function AssistantPage() {
       
       setMessages((prev: Message[]) => [...prev, assistantPlaceholder])
       
+      // Update chat with placeholder message
+      const chatToUpdate = getChat(conversationId);
+      if (chatToUpdate) {
+        const updatedChat: Chat = {
+          ...chatToUpdate,
+          lastActive: new Date().toISOString(),
+          messages: [...chatToUpdate.messages, assistantPlaceholder]
+        };
+        
+        saveChat(updatedChat);
+      }
+      
       es.onmessage = (event) => {
         const eventData = JSON.parse(event.data)
         
@@ -639,32 +723,27 @@ export default function AssistantPage() {
           es.close()
           setEventSource(null)
           
-          // After completing a message, update the chat history with this new conversation
-          const newChat: Chat = {
-            id: conversationId || `chat-${Date.now()}`,
-            title: userMessage.content.length > 30 
-              ? `${userMessage.content.substring(0, 30)}...` 
-              : userMessage.content,
-            preview: userMessage.content,
-            lastActive: new Date().toISOString(),
-            messages: [...messages, userMessage, {
-              ...assistantPlaceholder,
-              content: eventData.full_response || assistantPlaceholder.content,
-              streaming: false
-            }]
+          // After completing a message, update the chat with this new conversation
+          const finalChat = getChat(conversationId);
+          if (finalChat) {
+            const completedMessages = finalChat.messages.map(msg => 
+              msg.id === data.message_id 
+                ? {
+                    ...msg,
+                    content: eventData.full_response || msg.content,
+                    streaming: false
+                  } 
+                : msg
+            );
+            
+            const newChat: Chat = {
+              ...finalChat,
+              messages: completedMessages
+            };
+            
+            saveChat(newChat);
+            setChatHistory(getChatHistory());
           }
-          
-          setChatHistory((prev: Chat[]) => {
-            // Check if we're updating an existing conversation or adding a new one
-            const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
-            if (existingIndex >= 0) {
-              const updated = [...prev]
-              updated[existingIndex] = newChat
-              return updated
-            } else {
-              return [newChat, ...prev]
-            }
-          })
           
         } else if (eventData.chunk) {
           // Update the message with new chunk
@@ -675,24 +754,61 @@ export default function AssistantPage() {
                 : msg
             )
           )
+          
+          // Update the saved chat with the current streaming content
+          const streamChat = getChat(conversationId);
+          if (streamChat) {
+            const streamingMessages = streamChat.messages.map(msg => 
+              msg.id === data.message_id 
+                ? { 
+                    ...msg, 
+                    content: eventData.full_response, 
+                    streaming: true 
+                  } 
+                : msg
+            );
+            
+            const updatedStreamChat: Chat = {
+              ...streamChat,
+              messages: streamingMessages
+            };
+            
+            saveChat(updatedStreamChat);
+          }
         } else if (eventData.status === 'error') {
           // Handle error
           setIsTyping(false)
           es.close()
           setEventSource(null)
           
-          // Add error message with animation
+          // Add error message
+          const errorMessage: Message = {
+            id: data.message_id,
+            role: 'assistant',
+            content: 'Sorry, there was an error processing your request. Please try again later.',
+            timestamp: new Date().toISOString(),
+            error: true,
+            isNew: true,
+          };
+          
           setMessages((prev: Message[]) => [
             ...prev.filter(msg => msg.id !== data.message_id),
-            {
-              id: data.message_id,
-              role: 'assistant',
-              content: 'Sorry, there was an error processing your request. Please try again later.',
-              timestamp: new Date().toISOString(),
-              error: true,
-              isNew: true,
-            }
-          ])
+            errorMessage
+          ]);
+          
+          // Update chat with error message
+          const errorChat = getChat(conversationId);
+          if (errorChat) {
+            const errorMessages = errorChat.messages.filter(msg => msg.id !== data.message_id);
+            
+            const updatedErrorChat: Chat = {
+              ...errorChat,
+              messages: [...errorMessages, errorMessage]
+            };
+            
+            saveChat(updatedErrorChat);
+            setChatHistory(getChatHistory());
+          }
         }
       }
       
@@ -712,18 +828,29 @@ export default function AssistantPage() {
         console.log('Switching to mock mode for response')
         handleMockResponse(userMessage)
       } else {
-        // Add error message with animation
-        setMessages((prev: Message[]) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
-            timestamp: new Date().toISOString(),
-            error: true,
-            isNew: true,
-          }
-        ])
+        // Add error message
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+          timestamp: new Date().toISOString(),
+          error: true,
+          isNew: true,
+        };
+        
+        setMessages((prev: Message[]) => [...prev, errorMessage]);
+        
+        // Update chat with error message
+        const chatWithError = getChat(conversationId);
+        if (chatWithError) {
+          const updatedChat: Chat = {
+            ...chatWithError,
+            messages: [...chatWithError.messages, errorMessage]
+          };
+          
+          saveChat(updatedChat);
+          setChatHistory(getChatHistory());
+        }
       }
     }
   }
@@ -764,26 +891,19 @@ export default function AssistantPage() {
       setIsTyping(false)
       
       // Update chat history
-      const newChat: Chat = {
-        id: conversationId || `chat-${Date.now()}`,
-        title: userMessage.content.length > 30 
-          ? `${userMessage.content.substring(0, 30)}...` 
-          : userMessage.content,
-        preview: userMessage.content,
-        lastActive: new Date().toISOString(),
-        messages: [...messages, userMessage, mockResponse]
+      const currentChat = getChat(conversationId!);
+      if (currentChat) {
+        const updatedChat: Chat = {
+          ...currentChat,
+          title: generateChatTitle(userMessage.content),
+          preview: userMessage.content,
+          lastActive: new Date().toISOString(),
+          messages: [...currentChat.messages, mockResponse]
+        };
+        
+        saveChat(updatedChat);
+        setChatHistory(getChatHistory());
       }
-      
-      setChatHistory((prev: Chat[]) => {
-        const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
-        if (existingIndex >= 0) {
-          const updated = [...prev]
-          updated[existingIndex] = newChat
-          return updated
-        } else {
-          return [newChat, ...prev]
-        }
-      })
     }, 1500) // Simulate typing delay
   }
 
@@ -856,6 +976,52 @@ export default function AssistantPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
+  // Handle deleting a conversation
+  const handleDeleteConversation = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the loadConversation
+    
+    // Delete the conversation
+    deleteChat(chatId);
+    
+    // Update the history list
+    setChatHistory(getChatHistory());
+    
+    // If we're deleting the active conversation, create a new one
+    if (chatId === activeChatId) {
+      createNewConversation();
+    }
+    
+    // Show success message
+    toast({
+      title: "Conversation deleted",
+      description: "The conversation has been removed from your history."
+    });
+  };
+
+  // Handle manually saving the conversation
+  const handleSaveConversation = () => {
+    if (conversationId && messages.length > 0) {
+      const currentChat = getChat(conversationId);
+      
+      if (currentChat) {
+        // Simply re-save the current conversation to trigger the save animation
+        saveChat(currentChat);
+        
+        // Show save indicator
+        setShowSaveIndicator(true);
+        setTimeout(() => {
+          setShowSaveIndicator(false);
+        }, 2000);
+        
+        // Show success message
+        toast({
+          title: "Conversation saved",
+          description: "Your conversation has been saved successfully."
+        });
+      }
+    }
+  };
+
   // Main content
   return (
     <>
@@ -914,19 +1080,31 @@ export default function AssistantPage() {
               </div>
             )}
             
+            {/* Autosave indicator */}
+            {showSaveIndicator && (
+              <div className="px-4 py-2 bg-green-50 border-b border-green-100 save-indicator">
+                <div className="flex items-center text-green-800 text-xs">
+                  <Save className="h-4 w-4 mr-1" />
+                  <span>Conversation saved automatically</span>
+                </div>
+              </div>
+            )}
+            
             {/* Chat list with animations */}
             <div className="flex-1 overflow-y-auto">
               {filteredHistory.length > 0 ? (
                 <div className="divide-y">
                   {filteredHistory.map((chat) => (
-                    <button
+                    <div
                       key={chat.id}
-                      className={`w-full text-left p-4 transition-all duration-200 history-item ${
+                      className={`w-full text-left p-4 transition-all duration-200 history-item relative group ${
                         activeChatId === chat.id ? 'history-item-active' : ''
                       }`}
-                      onClick={() => loadConversation(chat.id)}
                     >
-                      <div className="flex items-start">
+                      <button 
+                        className="w-full text-left flex items-start" 
+                        onClick={() => loadConversation(chat.id)}
+                      >
                         <div className={`flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center transition-all duration-300 ${
                           activeChatId === chat.id ? 'bg-blue-200' : ''
                         }`}>
@@ -934,7 +1112,7 @@ export default function AssistantPage() {
                             activeChatId === chat.id ? 'text-blue-700' : ''
                           }`} />
                         </div>
-                        <div className="ml-3">
+                        <div className="ml-3 flex-grow">
                           <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
                           <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
                           <div className="flex items-center mt-1 text-xs text-gray-400">
@@ -942,8 +1120,17 @@ export default function AssistantPage() {
                             <span>{formatDate(chat.lastActive)}</span>
                           </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      
+                      {/* Delete button that appears on hover */}
+                      <button
+                        className="absolute right-2 top-2 p-1 rounded-full bg-white text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => handleDeleteConversation(chat.id, e)}
+                        title="Delete conversation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -982,15 +1169,26 @@ export default function AssistantPage() {
                   : 'New Chat'}
               </h2>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={createNewConversation}
-              className="flex items-center button-hover-effect"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              New Chat
-            </Button>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveConversation}
+                className="flex items-center"
+                title="Save conversation"
+              >
+                <Save className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={createNewConversation}
+                className="flex items-center button-hover-effect"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                New Chat
+              </Button>
+            </div>
           </div>
           
           {/* Chat messages with loading state */}
