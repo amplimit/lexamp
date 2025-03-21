@@ -22,7 +22,7 @@ export async function GET(request: Request, context: RouteContext) {
     // Get the conversation ID from the route params
     const { id } = await context.params;
     
-    // Fetch the conversation from the database
+    // Fetch the conversation from the database with all messages
     const conversation = await prisma.conversation.findUnique({
       where: {
         id,
@@ -55,7 +55,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     return NextResponse.json({
       id: conversation.id,
-      title: conversation.title,
+      title: conversation.title || 'New Conversation',
       created_at: conversation.createdAt.toISOString(),
       messages: formattedMessages,
     });
@@ -91,7 +91,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Delete the conversation
+    // Delete the conversation and all associated messages (cascade delete is configured in the schema)
     await prisma.conversation.delete({
       where: { id },
     });

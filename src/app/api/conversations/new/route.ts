@@ -10,8 +10,19 @@ export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     
+    if (!session) {
+      console.error("No session found");
+      return NextResponse.json({ error: 'Not authenticated', details: 'No session found' }, { status: 401 });
+    }
+    
+    if (!session?.user) {
+      console.error("No user in session");
+      return NextResponse.json({ error: 'Unauthorized', details: 'No user in session' }, { status: 401 });
+    }
+    
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.error("No user ID in session");
+      return NextResponse.json({ error: 'Unauthorized', details: 'No user ID in session' }, { status: 401 });
     }
 
     // First try to connect to the Flask backend
@@ -36,42 +47,53 @@ export async function POST(request: Request) {
     }
 
     // Create conversation in database
-    const conversation = await prisma.conversation.create({
-      data: {
-        userId: session.user.id,
-        title: 'New Conversation',
-      },
-    });
-
-    // Create a welcome message
-    const welcomeMessage = await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        content: "你好！我是您的法律助手，有什么我可以帮助您的吗？",
-        role: 'assistant',
-      },
-    });
-
-    // Format the response to match the expected structure
-    const timestamp = new Date().toISOString();
-    const response = {
-      id: conversation.id,
-      title: conversation.title,
-      backendId: backendConversationId, // Store the backend ID for later use
-      created_at: timestamp,
-      messages: [
-        {
-          id: welcomeMessage.id,
-          role: "assistant",
-          content: welcomeMessage.content,
-          timestamp: welcomeMessage.createdAt.toISOString()
-        }
-      ]
-    };
-
-    return NextResponse.json(response);
+    try {
+      const conversation = await prisma.conversation.create({
+        data: {
+          userId: session.user.id,
+          title: 'New Conversation',
+        },
+      });
+  
+      // Create a welcome message
+      const welcomeMessage = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          content: "Hello! I'm your legal assistant. How can I help you today?",
+          role: 'assistant',
+        },
+      });
+  
+      // Format the response to match the expected structure
+      const timestamp = new Date().toISOString();
+      const response = {
+        id: conversation.id,
+        title: conversation.title,
+        backendId: backendConversationId, // Store the backend ID for later use
+        created_at: timestamp,
+        messages: [
+          {
+            id: welcomeMessage.id,
+            role: "assistant",
+            content: welcomeMessage.content,
+            timestamp: welcomeMessage.createdAt.toISOString()
+          }
+        ]
+      };
+  
+      return NextResponse.json(response);
+    } catch (dbError) {
+      console.error("Database error creating conversation:", dbError instanceof Error ? dbError.message : 'Unknown error');
+      return NextResponse.json({ 
+        error: 'Database error', 
+        details: dbError instanceof Error ? dbError.message : 'Unknown database error'
+      }, { status: 500 });
+    }
   } catch (error) {
     console.error("Error creating conversation:", error instanceof Error ? error.message : 'Unknown error');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Error creating conversation', 
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

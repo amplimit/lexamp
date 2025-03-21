@@ -29,6 +29,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Check if conversation exists and belongs to user
     const conversation = await prisma.conversation.findUnique({
       where: { id },
+      include: {
+        messages: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 1
+        }
+      }
     });
     
     if (!conversation) {
@@ -40,6 +48,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     
     const body = await request.json();
+    
+    // Update conversation title if it's the first message
+    if (conversation.messages.length <= 1 && body.message && !conversation.title) {
+      // Use the first few words of the user's first message as the title
+      let title = body.message;
+      if (title.length > 30) {
+        title = title.substring(0, 30) + '...';
+      }
+      
+      await prisma.conversation.update({
+        where: { id },
+        data: { title }
+      });
+    }
     
     // Store user message in database first
     const userMessage = await prisma.message.create({
@@ -59,7 +81,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Try connecting to the Flask backend
     let backendResponse;
     try {
-      backendResponse = await fetch(`${FLASK_BACKEND_URL}/api/conversations/${id}/messages/stream`, {
+      // 修正API路径 - 确保与后端匹配
+      const backendUrl = `${FLASK_BACKEND_URL}/api/conversations/${id}/messages`;
+      backendResponse = await fetch(backendUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,21 +92,42 @@ export async function POST(request: NextRequest, context: RouteContext) {
         body: JSON.stringify(body),
       });
 
-      if (!backendResponse.ok) {
-        throw new Error('Failed to send message to backend');
+      // 检查响应状态
+      if (backendResponse.ok) {
+        // 正常处理成功响应
+        const data = await backendResponse.json();
+        
+        return NextResponse.json({
+          status: "message_received",
+          message_id: data.message_id || userMessage.id
+        });
+      } else {
+        console.warn(`Backend responded with status ${backendResponse.status} for conversation ${id}`);
+        // 如果是404，可能是API路径不匹配，静默失败并使用本地功能
+        // 对于其他错误，我们也使用本地功能，但记录详细信息
+        
+        if (backendResponse.status !== 404) {
+          try {
+            const errorText = await backendResponse.text();
+            console.error(`Backend error details: ${errorText}`);
+          } catch (e) {
+            console.error('Could not read error details from backend');
+          }
+        }
+        
+        console.error(`Failed to access backend API: ${backendUrl}`);
+        
+        // 返回用户消息ID以便继续使用本地响应
+        return NextResponse.json({
+          status: "message_received",
+          message_id: userMessage.id
+        });
       }
-
-      // Get backend response data
-      const data = await backendResponse.json();
-      
-      return NextResponse.json({
-        status: "message_received",
-        message_id: data.message_id || userMessage.id
-      });
     } catch (error) {
       console.error(`Error sending message to conversation ${id}:`, error);
+      console.error(`Failed to access backend API: ${FLASK_BACKEND_URL}/api/conversations/${encodeURIComponent(id)}/messages`);
       
-      // If backend fails, return user message ID so we can continue with mock response
+      // 如果后端连接失败，返回用户消息ID以便继续使用本地响应
       return NextResponse.json({
         status: "message_received",
         message_id: userMessage.id
@@ -120,6 +165,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (conversation.userId !== session.user.id) {
       return new NextResponse('Unauthorized', { status: 403 });
     }
+    
+    // Get message ID from query (for tracing back to the original message)
+    const messageId = request.nextUrl.searchParams.get('messageId') || `fallback-${Date.now()}`;
   
     // 创建一个响应流
     const encoder = new TextEncoder();
@@ -135,18 +183,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
           });
 
           if (!response.ok || !response.body) {
-            // 如果响应不成功，发送错误事件并关闭流
-            const errorData = JSON.stringify({
-              status: "error",
-              error: "Failed to connect to backend service",
-              message: "抱歉，无法连接到聊天服务。请稍后再试。"
-            });
-            controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+            // 如果响应不成功，不要立即报错，而是降级到本地模拟响应
+            const backendUrl = `${FLASK_BACKEND_URL}/api/conversations/${id}/messages/stream`;
+            if (response.status === 404) {
+              console.warn(`Backend API endpoint not found (404) for conversation ${id}, using local fallback`);
+              console.warn(`Attempted to access: ${backendUrl}`);
+              console.warn(`Check if backend server is running and endpoint exists at this path`);
+            } else {
+              console.error(`Failed to connect to backend service for conversation ${id}, status: ${response.status}`);
+              console.error(`Attempted to access: ${backendUrl}`);
+              try {
+                const errorText = await response.text();
+                console.error(`Backend error details: ${errorText}`);
+              } catch (e) {
+                // 忽略读取错误详情时的错误
+              }
+            }
             
-            // 创建一个错误消息并保存到数据库
-            await saveAssistantMessage(id, "抱歉，无法连接到聊天服务。请稍后再试。");
-            
-            controller.close();
+            // 生成本地回复
+            await generateLocalResponse(controller, encoder, id, messageId);
             return;
           }
 
@@ -208,7 +263,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           
           // 将完整响应保存到数据库
           if (fullResponse) {
-            await saveAssistantMessage(id, fullResponse);
+            await saveAssistantMessage(id, fullResponse, messageId);
           }
           
           controller.close();
@@ -219,14 +274,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
           const errorData = JSON.stringify({
             status: "error",
             error: String(error),
-            message: "抱歉，获取响应时出现错误。请稍后再试。"
+            message: "Sorry, an error occurred while getting the response. Please try again later.",
+            id: messageId
           });
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           
           // 如果是模拟模式，发送一些模拟数据
           if (id.startsWith('mock-')) {
-            const messageId = request.nextUrl.searchParams.get('messageId') || `mock-msg-${Date.now()}`;
-            const mockResponse = "这是一个模拟响应。在实际部署中，这将由真实的AI助手提供。";
+            const mockMessageId = messageId || `mock-msg-${Date.now()}`;
+            const mockResponse = "This is a simulated response. In a real deployment, this would be provided by a real AI assistant.";
             
             // 模拟逐块发送
             const chunks = mockResponse.split('。');
@@ -235,7 +291,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
               const fullResponseSoFar = chunks.slice(0, i + 1).join('。') + (i < chunks.length - 1 ? '。' : '');
               
               const chunkData = JSON.stringify({
-                id: messageId,
+                id: mockMessageId,
                 chunk: chunk,
                 full_response: fullResponseSoFar
               });
@@ -247,17 +303,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
             
             // 发送完成事件
             const completionData = JSON.stringify({
-              id: messageId,
+              id: mockMessageId,
               status: "complete",
               full_response: mockResponse
             });
             controller.enqueue(encoder.encode(`data: ${completionData}\n\n`));
             
             // 保存模拟响应到数据库
-            await saveAssistantMessage(id, mockResponse);
+            await saveAssistantMessage(id, mockResponse, mockMessageId);
           } else {
             // 保存错误信息到数据库
-            await saveAssistantMessage(id, "抱歉，获取响应时出现错误。请稍后再试。");
+            await saveAssistantMessage(
+              id, 
+              "Sorry, an error occurred while getting the response. Please try again later.", 
+              messageId
+            );
           }
           
           controller.close();
@@ -280,14 +340,29 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // Helper function to save assistant message to database
-async function saveAssistantMessage(conversationId: string, content: string): Promise<void> {
+async function saveAssistantMessage(conversationId: string, content: string, messageId?: string | null): Promise<void> {
+  // 添加参数验证
+  if (!conversationId || !content) {
+    console.warn('Invalid parameters for saveAssistantMessage', { conversationId, contentLength: content?.length });
+    return;
+  }
+
   try {
+    // 构建消息数据
+    const messageData: any = {
+      conversationId,
+      content,
+      role: 'assistant',
+    };
+    
+    // 如果提供了messageId，使用它
+    if (messageId) {
+      messageData.id = messageId;
+    }
+    
+    // 创建消息记录
     await prisma.message.create({
-      data: {
-        conversationId,
-        content,
-        role: 'assistant',
-      },
+      data: messageData,
     });
     
     // Update conversation updatedAt timestamp
@@ -297,5 +372,120 @@ async function saveAssistantMessage(conversationId: string, content: string): Pr
     });
   } catch (error) {
     console.error('Error saving assistant message:', error);
+  }
+}
+
+/**
+ * 生成本地响应，当后端不可用时使用
+ */
+async function generateLocalResponse(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  conversationId: string,
+  messageId: string
+): Promise<void> {
+  try {
+    // 查询用户的上一条消息
+    const lastMessages = await prisma.message.findMany({
+      where: {
+        conversationId: conversationId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 2, // 获取最近的两条消息
+    });
+
+    // 提取用户问题
+    const userMessage = lastMessages.find(msg => msg.role === 'user');
+    let userQuestion = "I don't have any context of your request.";
+    
+    if (userMessage) {
+      userQuestion = userMessage.content;
+    }
+    
+    // 创建一个简单的回复
+    const response = `I'm currently operating in offline mode due to a connection issue with the backend service. 
+    
+Your question was: "${userQuestion}"
+
+I can provide some general information, but for more specific legal assistance, please try again later when the service is fully operational.`;
+
+    // 分段发送响应以模拟流式处理
+    const chunks = response.split('\n\n');
+    let fullText = '';
+    
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fullText += chunk + '\n\n';
+      
+      const payload = {
+        id: messageId,
+        role: 'assistant',
+        content: fullText.trim(),
+        status: 'streaming'
+      };
+      
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+    }
+    
+    // 发送完成事件
+    const finalPayload = {
+      id: messageId,
+      role: 'assistant',
+      content: fullText.trim(),
+      status: 'complete'
+    };
+    
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalPayload)}\n\n`));
+    
+    // 保存回复到数据库 - 使用 try/catch 包装以避免影响流的关闭
+    try {
+      // 确保参数有效再保存消息
+      if (conversationId && fullText && fullText.trim() && messageId) {
+        await saveAssistantMessage(conversationId, fullText.trim(), messageId);
+      } else {
+        console.warn('Skipping saveAssistantMessage due to invalid parameters:', 
+                    { conversationId, messageLength: fullText?.length, messageId });
+      }
+    } catch (saveError) {
+      console.error('Error saving assistant response:', saveError);
+    }
+    
+    controller.close();
+  } catch (error) {
+    console.error('Error generating local response:', error);
+    
+    // 创建一个错误消息
+    const errorMessage = 'Sorry, I encountered an error while processing your request.';
+    const errorPayload = {
+      id: messageId,
+      role: 'assistant',
+      content: errorMessage,
+      status: 'complete'
+    };
+    
+    // 尝试发送错误消息
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorPayload)}\n\n`));
+    } catch (encodeError) {
+      console.error('Error sending error message:', encodeError);
+    }
+    
+    // 关闭流
+    try {
+      controller.close();
+    } catch (closeError) {
+      console.error('Error closing stream:', closeError);
+    }
+    
+    // 尝试保存错误消息
+    try {
+      await saveAssistantMessage(conversationId, errorMessage, messageId);
+    } catch (saveError) {
+      console.error('Error saving error message:', saveError);
+    }
   }
 }

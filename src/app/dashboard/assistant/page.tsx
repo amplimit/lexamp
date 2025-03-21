@@ -1,10 +1,14 @@
-// src/app/dashboard/assistant/page.tsx
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import { useSession } from 'next-auth/react'
 import { 
   Send, 
   Paperclip, 
@@ -22,9 +26,12 @@ import {
   MessageSquare,
   AlertTriangle,
   Trash2,
-  MoreVertical,
-  Loader2
+  Loader2,
+  RefreshCw,
+  Check
 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import 'katex/dist/katex.min.css'
 
 // Define message interface
 interface Message {
@@ -43,7 +50,6 @@ interface Chat {
   title: string;
   preview: string;
   lastActive: string;
-  messages: Message[];
 }
 
 // Example questions remain the same
@@ -200,13 +206,58 @@ const animationStyles = `
     background-color: rgba(239, 246, 255, 0.7);
   }
   
-  /* Form field focus animation */
-  .form-field-focus {
-    transition: all 0.2s ease;
+  /* Markdown table styles */
+  .markdown-content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    width: 100%;
+    overflow-x: auto;
+    display: block;
   }
   
-  .form-field-focus:focus-within {
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  .markdown-content table th,
+  .markdown-content table td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  
+  .markdown-content table th {
+    background-color: #f8fafc;
+    font-weight: 600;
+  }
+  
+  .markdown-content table tr:nth-child(even) {
+    background-color: #f9fafb;
+  }
+  
+  /* LaTeX/KaTeX styles overrides */
+  .markdown-content .katex-display {
+    margin: 1em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  
+  .markdown-content .katex {
+    font-size: 1.1em;
+  }
+  
+  /* Dark theme adjustments for user messages */
+  .bg-blue-600 .markdown-content {
+    color: white;
+  }
+  
+  .bg-blue-600 .markdown-content table th,
+  .bg-blue-600 .markdown-content table td {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  
+  .bg-blue-600 .markdown-content table th {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .bg-blue-600 .markdown-content table tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.05);
   }
   
   /* Skeleton loading animation */
@@ -261,9 +312,27 @@ const animationStyles = `
   .history-item:hover .delete-btn {
     opacity: 1;
   }
+  
+  /* Form field focus animation */
+  .form-field-focus {
+    transition: all 0.2s ease;
+  }
+  
+  .form-field-focus:focus-within {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+  
+  /* Skeleton loading animation */
 `;
 
 export default function AssistantPage() {
+  // Use session for authentication
+  const { data: session, status } = useSession()
+  
+  // Search params to check for active conversation
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
   // State for chat functionality
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
@@ -285,12 +354,16 @@ export default function AssistantPage() {
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false)
   const [isDeletingChat, setIsDeletingChat] = useState<string | null>(null)
   
+  // Dialog state for deletion confirmation
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [chatToDelete, setChatToDelete] = useState<string | null>(null)
+  
   // Animation states
   const [fadeInSuggestions, setFadeInSuggestions] = useState(true)
   const [animateHeaderEffect, setAnimateHeaderEffect] = useState(false)
   
   // Use mock mode instead of real API (toggle this based on your environment)
-  const [useMockMode, setUseMockMode] = useState(true)
+  const [useMockMode, setUseMockMode] = useState(false)
   const [apiStatusChecked, setApiStatusChecked] = useState(false)
   
   const suggestionsPerPage = 4
@@ -305,6 +378,14 @@ export default function AssistantPage() {
     chat.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     chat.preview.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  // Load conversation from URL parameter if provided
+  useEffect(() => {
+    const conversationIdFromUrl = searchParams.get('id');
+    if (conversationIdFromUrl && apiStatusChecked) {
+      loadConversation(conversationIdFromUrl);
+    }
+  }, [searchParams, apiStatusChecked]);
 
   // Auto scroll to bottom of messages only when shouldScrollToBottom is true
   useEffect(() => {
@@ -341,51 +422,58 @@ export default function AssistantPage() {
     async function checkApiStatus() {
       if (apiStatusChecked) return;
       
+      // Check if user is authenticated first
+      if (status === 'loading') {
+        // Wait for session loading to complete
+        return;
+      }
+      
+      if (status === 'unauthenticated') {
+        // Redirect to login if not authenticated
+        router.push('/auth');
+        return;
+      }
+      
       try {
-        console.log('正在检查API状态...');
+        console.log('Checking API status...');
         
-        // 修改1: 增加超时时间到5秒
+        // Add timeout to avoid hanging if API is not responsive
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('API超时')), 5000)
+          setTimeout(() => reject(new Error('API timeout')), 5000)
         );
         
-        const apiUrl = getApiBaseUrl();
-        console.log('尝试连接到API:', apiUrl);
-        
-        // 修改2: 使用更简单的fetch请求，使用HEAD方法
-        const fetchPromise = fetch(`${apiUrl}/api/health`, { 
+        const fetchPromise = fetch('/api/chat-backend/health', { 
           method: 'HEAD',
-          // 确保不包含不必要的headers，减少CORS问题
           credentials: 'omit'
         });
         
-        // 使用Promise.race竞争超时
+        // Race between fetch and timeout
         await Promise.race([fetchPromise, timeoutPromise]);
         
-        // 如果到这里，说明API可用
+        // If we get here, API is available
         setUseMockMode(false);
-        console.log('✅ API可用，使用真实模式');
+        console.log('API available, using real mode');
       } catch (error) {
-        // API不可用
-        setUseMockMode(true);
-        console.error('❌ API连接失败:', error instanceof Error ? error.message : String(error));
-        console.log('使用模拟模式');
-        
-        // 显示更多诊断信息
-        console.log('网络诊断:');
-        console.log('- 目标API URL:', getApiBaseUrl());
-        console.log('- 检查服务器是否在该端口运行');
-        console.log('- 检查服务器的CORS配置');
-        console.log('- 检查浏览器控制台获取更详细的错误信息');
+        // API is not available
+        setUseMockMode(false); // Still use real API but with fallback to database
+        console.error('Direct API connection failed:', error instanceof Error ? error.message : String(error));
+        console.log('Using database-backed mode');
       }
       
       setApiStatusChecked(true);
-      createNewConversation();
+      
+      // Check for conversation ID in URL or create new conversation
+      const conversationIdFromUrl = searchParams.get('id');
+      if (conversationIdFromUrl) {
+        // Will be handled by the other useEffect
+      } else {
+        createNewConversation();
+      }
     };
     
     checkApiStatus();
     
-    // 清理函数，关闭任何打开的event source
+    // Cleanup function to close any open EventSource
     return () => {
       if (eventSource) {
         eventSource.close();
@@ -403,23 +491,6 @@ export default function AssistantPage() {
     }
   }, [animateHeaderEffect]);
 
-  // Get API base URL from environment variable or use default
-  const getApiBaseUrl = () => {
-    // 优先使用环境变量中的API URL
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL;
-    }
-    
-    // 使用相对URL避免CORS问题
-    if (typeof window !== 'undefined') {
-      // 使用相对路径，通过Next.js API路由代理请求
-      return '/api/chat-backend';
-    }
-    
-    // 默认使用localhost
-    return 'http://localhost:5000';
-  }  
-
   // Load conversation history from the server
   const loadConversationHistory = async () => {
     try {
@@ -436,26 +507,37 @@ export default function AssistantPage() {
     }
   };
 
-  // Delete conversation
-  const deleteConversation = async (chatId: string, e: React.MouseEvent) => {
+  // Delete conversation - show confirmation dialog
+  const confirmDeleteConversation = (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering the chat selection
-    
-    if (isDeletingChat) return; // Prevent multiple simultaneous deletions
+    setChatToDelete(chatId);
+    setDeleteDialogOpen(true);
+  };
+  
+  // Actually delete the conversation after confirmation
+  const deleteConversation = async () => {
+    if (!chatToDelete) return;
     
     try {
-      setIsDeletingChat(chatId);
+      setIsDeletingChat(chatToDelete);
+      setDeleteDialogOpen(false);
       
-      const response = await fetch(`/api/conversations/${chatId}`, {
+      const response = await fetch(`/api/conversations/${chatToDelete}`, {
         method: 'DELETE',
       });
       
       if (response.ok) {
         // Remove from chat history state
-        setChatHistory(prev => prev.filter(chat => chat.id !== chatId));
+        setChatHistory(prev => prev.filter(chat => chat.id !== chatToDelete));
         
         // If this was the active chat, create a new conversation
-        if (activeChatId === chatId) {
+        if (activeChatId === chatToDelete) {
           createNewConversation();
+        }
+        
+        // If we're on this chat's page, redirect to base assistant page
+        if (searchParams.get('id') === chatToDelete) {
+          router.push('/dashboard/assistant');
         }
       } else {
         console.error('Failed to delete conversation');
@@ -464,12 +546,34 @@ export default function AssistantPage() {
       console.error('Error deleting conversation:', error);
     } finally {
       setIsDeletingChat(null);
+      setChatToDelete(null);
     }
   };
 
   // Function to create a new conversation with animation
   const createNewConversation = async () => {
     try {
+      // Check authentication status
+      if (status === 'unauthenticated') {
+        console.error('User not authenticated');
+        router.push('/auth');
+        return;
+      }
+      
+      if (!session?.user?.id) {
+        console.error('No user ID available');
+        // Show an error message with fallback to local mode
+        setMessages([{
+          id: 'auth-error',
+          role: 'assistant',
+          content: "There was an authentication error. Please try logging out and logging back in.",
+          timestamp: new Date().toISOString(),
+          error: true,
+          isNew: true
+        }]);
+        return;
+      }
+      
       // Add animation effect
       setAnimateHeaderEffect(true);
       setIsLoadingChat(true);
@@ -486,22 +590,27 @@ export default function AssistantPage() {
       // Short delay for animation
       await new Promise(resolve => setTimeout(resolve, 150));
       
-      setMessages([...initialMessages].map(msg => ({ ...msg, isNew: true })));
       setInput('');
       setIsTyping(false);
       
       try {
-        // Try to create a real conversation with the API
+        // Create a real conversation with the API
         const response = await fetch(`/api/conversations/new`, {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
         })
         
         if (response.ok) {
           const data = await response.json()
           setConversationId(data.id)
-          setActiveChatId(null) // Reset active chat
+          setActiveChatId(data.id) // Set as active chat
           
-          // Set initial assistant message from API response if available
+          // Update URL with the new conversation ID without full page reload
+          router.push(`/dashboard/assistant?id=${data.id}`, { scroll: false });
+          
+          // Set initial messages from API response if available
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages.map((msg: any) => ({
               id: msg.id,
@@ -510,17 +619,42 @@ export default function AssistantPage() {
               timestamp: msg.timestamp,
               isNew: true
             })))
+          } else {
+            // Reset to initial welcome message if no messages from server
+            setMessages([...initialMessages].map(msg => ({ ...msg, isNew: true })));
           }
           
           // Update chat history
           loadConversationHistory();
         } else {
-          console.warn('API response not OK, using mock mode')
-          createMockConversation()
+          // Handle error response
+          const errorData = await response.json();
+          console.error('Error creating conversation:', errorData);
+          
+          // Show error message to user
+          setMessages([{
+            id: 'api-error',
+            role: 'assistant',
+            content: `There was an error creating a new conversation: ${errorData.error || 'Unknown error'}. ${errorData.details || ''}`,
+            timestamp: new Date().toISOString(),
+            error: true,
+            isNew: true
+          }]);
+          
+          // Still try to load existing conversations
+          loadConversationHistory();
         }
       } catch (error) {
         console.error('Error creating conversation with API:', error)
-        createMockConversation()
+        // Show error message to user
+        setMessages([{
+          id: 'exception-error',
+          role: 'assistant',
+          content: `There was an error connecting to the server. Please check your connection and try again.`,
+          timestamp: new Date().toISOString(),
+          error: true,
+          isNew: true
+        }]);
       }
       
       // Scroll to bottom with new messages
@@ -533,18 +667,18 @@ export default function AssistantPage() {
       
     } catch (error) {
       console.error('Error in createNewConversation:', error)
-      createMockConversation()
       setIsLoadingChat(false);
+      // Show general error message
+      setMessages([{
+        id: 'general-error',
+        role: 'assistant',
+        content: `An unexpected error occurred. Please try again later.`,
+        timestamp: new Date().toISOString(),
+        error: true,
+        isNew: true
+      }]);
+      setShouldScrollToBottom(true);
     }
-  }
-  
-  // Create a mock conversation when API is not available
-  const createMockConversation = () => {
-    // Generate a mock conversation ID
-    const mockId = `mock-${Date.now()}`
-    setConversationId(mockId)
-    setActiveChatId(null)
-    console.log("Using mock conversation with ID:", mockId)
   }
   
   // Load a conversation from history with animation
@@ -564,15 +698,23 @@ export default function AssistantPage() {
         
         setConversationId(data.id);
         setActiveChatId(chatId);
+        
+        // Update URL if needed (only if it doesn't already have this ID)
+        if (searchParams.get('id') !== chatId) {
+          router.push(`/dashboard/assistant?id=${chatId}`, { scroll: false });
+        }
+        
         setIsHistoryOpen(false); // Close sidebar on mobile
         
         // Scroll to bottom with loaded messages
         setShouldScrollToBottom(true);
       } else {
         console.error('Failed to load conversation:', await response.text());
+        createNewConversation(); // Create a new conversation if loading fails
       }
     } catch (error) {
       console.error('Error loading conversation:', error);
+      createNewConversation(); // Create a new conversation if loading fails
     } finally {
       setIsLoadingChat(false);
     }
@@ -599,12 +741,6 @@ export default function AssistantPage() {
     // Set shouldScrollToBottom to true when a message is sent
     setShouldScrollToBottom(true)
     
-    // Use mock mode or API based on setting
-    if (useMockMode || conversationId.startsWith('mock-')) {
-      handleMockResponse(userMessage)
-      return
-    }
-    
     try {      
       // Step 1: Send message to server
       const response = await fetch(`/api/conversations/${conversationId}/messages/stream`, {
@@ -623,7 +759,7 @@ export default function AssistantPage() {
       setMessageId(data.message_id)
       
       // Step 2: Open SSE connection to receive streaming response
-      const es = new EventSource(`/api/conversations/${conversationId}/messages/stream`)
+      const es = new EventSource(`/api/conversations/${conversationId}/messages/stream?messageId=${data.message_id}`)
       setEventSource(es)
       
       // Create a placeholder for the streaming response
@@ -650,7 +786,7 @@ export default function AssistantPage() {
           // After completing a message, update the chat history
           loadConversationHistory();
           
-        } else if (eventData.chunk) {
+        } else if (eventData.chunk || eventData.full_response) {
           // Update the message with new chunk
           setMessages((prev: Message[]) => 
             prev.map(msg => 
@@ -688,90 +824,50 @@ export default function AssistantPage() {
         es.close()
         setEventSource(null)
         setIsTyping(false)
+        
+        // Add error message with animation
+        setMessages((prev: Message[]) => {
+          // Only add error message if there isn't already a response with this message ID
+          if (!prev.some(m => m.id === data.message_id && m.role === 'assistant' && m.content)) {
+            return [
+              ...prev.filter(msg => !(msg.id === data.message_id && msg.streaming)),
+              {
+                id: data.message_id,
+                role: 'assistant',
+                content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+                timestamp: new Date().toISOString(),
+                error: true,
+                isNew: true,
+              }
+            ];
+          }
+          return prev;
+        });
+        
+        // Update chat history
+        loadConversationHistory();
       }
       
     } catch (error) {
       console.error('Error sending message:', error)
       setIsTyping(false)
       
-      // If API fails, use mock mode
-      if (conversationId && !conversationId.startsWith('mock-')) {
-        console.log('Switching to mock mode for response')
-        handleMockResponse(userMessage)
-      } else {
-        // Add error message with animation
-        setMessages((prev: Message[]) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
-            timestamp: new Date().toISOString(),
-            error: true,
-            isNew: true,
-          }
-        ])
-      }
-    }
-  }
-  
-  // Handle mock responses when API is not available
-  const handleMockResponse = (userMessage: Message) => {
-    // Simulate typing delay
-    setTimeout(() => {
-      // Create a response based on the user's message
-      let responseContent = ''
-      
-      // Simple keyword matching for demo purposes
-      const lowerCaseMessage = userMessage.content.toLowerCase()
-      
-      if (lowerCaseMessage.includes('hello') || lowerCaseMessage.includes('hi')) {
-        responseContent = "Hello! I'm your AI legal assistant. How can I help you today?"
-      } else if (lowerCaseMessage.includes('tenant') || lowerCaseMessage.includes('rent')) {
-        responseContent = "# Tenant Rights\n\nAs a tenant, you generally have several key rights:\n\n1. **Right to habitable living conditions**\n2. **Right to privacy**\n3. **Protection against illegal discrimination**\n4. **Right to your security deposit**\n5. **Protection against retaliatory actions**\n\nThe specific rights can vary by location. What state or country are you located in?"
-      } else if (lowerCaseMessage.includes('contract') || lowerCaseMessage.includes('agreement')) {
-        responseContent = "## Contract Analysis\n\nWhen reviewing any contract, pay attention to:\n\n- **Parties involved**: Who are the parties entering into the agreement?\n- **Terms and conditions**: What are the specific obligations?\n- **Duration**: How long is the agreement valid for?\n- **Termination clauses**: Under what conditions can the contract be ended?\n- **Dispute resolution**: How will disagreements be handled?\n\nWould you like me to explain any of these aspects in more detail?"
-      } else if (lowerCaseMessage.includes('divorce') || lowerCaseMessage.includes('custody')) {
-        responseContent = "# Family Law Matters\n\nDivorce and custody issues involve several legal considerations:\n\n1. **Division of assets and debts**\n2. **Child custody and visitation**\n3. **Child support and alimony**\n4. **Retirement and pension division**\n\nThese matters can be resolved through:\n- Mediation\n- Collaborative divorce\n- Litigation\n\nWhat specific aspect are you concerned about?"
-      } else {
-        responseContent = "I understand you're asking about: \"" + userMessage.content + "\"\n\nThis is a complex legal topic that can vary by jurisdiction. Could you provide more details about your specific situation so I can give you more relevant information?"
-      }
-      
-      // Create the response message with animation
-      const mockResponse: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: responseContent,
-        timestamp: new Date().toISOString(),
-        isNew: true, // Mark as new for animation
-      }
-      
-      // Add the response to messages
-      setMessages((prev: Message[]) => [...prev, mockResponse])
-      setIsTyping(false)
-      
-      // Update chat history 
-      const newChat: Chat = {
-        id: conversationId || `chat-${Date.now()}`,
-        title: userMessage.content.length > 30 
-          ? `${userMessage.content.substring(0, 30)}...` 
-          : userMessage.content,
-        preview: userMessage.content,
-        lastActive: new Date().toISOString(),
-        messages: [...messages, userMessage, mockResponse]
-      }
-      
-      setChatHistory((prev: Chat[]) => {
-        const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
-        if (existingIndex >= 0) {
-          const updated = [...prev]
-          updated[existingIndex] = newChat
-          return updated
-        } else {
-          return [newChat, ...prev]
+      // Add error message with animation
+      setMessages((prev: Message[]) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+          timestamp: new Date().toISOString(),
+          error: true,
+          isNew: true,
         }
-      })
-    }, 1500) // Simulate typing delay
+      ])
+      
+      // Update chat history
+      loadConversationHistory();
+    }
   }
 
   // Handle suggestion click with animation
@@ -938,7 +1034,11 @@ export default function AssistantPage() {
                       </button>
                       <button 
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-red-500 rounded-full delete-btn z-10"
-                        onClick={(e) => deleteConversation(chat.id, e)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          confirmDeleteConversation(chat.id, e);
+                        }}
                         disabled={isDeletingChat === chat.id}
                         title="Delete conversation"
                       >
@@ -970,7 +1070,7 @@ export default function AssistantPage() {
 
         {/* Main chat area with enhanced animations */}
         <div className="flex-1 flex flex-col h-full overflow-hidden">
-          {/* Chat header with animation */}
+          {/* Top bar */}
           <div className={`bg-white border-b p-4 flex items-center justify-between transition-all duration-300 ${
             animateHeaderEffect ? 'bg-blue-50' : ''
           }`}>
@@ -979,23 +1079,37 @@ export default function AssistantPage() {
                 className="md:hidden mr-3 p-1 text-gray-500 hover:text-gray-700 transition-all duration-150 hover:scale-110"
                 onClick={() => setIsHistoryOpen(true)}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-6 w-6" />
               </button>
-              <h2 className="text-lg font-medium">
+              <h2 className="text-lg font-medium text-gray-900">
                 {activeChatId 
                   ? chatHistory.find(chat => chat.id === activeChatId)?.title || 'Chat' 
                   : 'New Chat'}
               </h2>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={createNewConversation}
-              className="flex items-center button-hover-effect"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              New Chat
-            </Button>
+            
+            <div className="flex items-center space-x-2">
+              {conversationId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadConversation(conversationId)}
+                  className="flex items-center button-hover-effect"
+                  title="Refresh conversation"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={createNewConversation}
+                className="flex items-center button-hover-effect"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                New Chat
+              </Button>
+            </div>
           </div>
           
           {/* Chat messages with loading state */}
@@ -1044,7 +1158,10 @@ export default function AssistantPage() {
                                   : 'bg-white border border-gray-200 text-gray-900'}`}
                           >
                             <div className="markdown-content">
-                              <ReactMarkdown>
+                              <ReactMarkdown 
+                                remarkPlugins={[remarkGfm, remarkMath]} 
+                                rehypePlugins={[rehypeKatex]}
+                              >
                                 {message.content}
                               </ReactMarkdown>
                             </div>
@@ -1180,6 +1297,31 @@ export default function AssistantPage() {
           </div>
         </div>
       </div>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Conversation</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this conversation? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={deleteConversation}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
