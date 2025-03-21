@@ -21,19 +21,10 @@ import {
   X,
   MessageSquare,
   AlertTriangle,
-  Save,
-  Trash2
+  Trash2,
+  MoreVertical,
+  Loader2
 } from 'lucide-react'
-import { toast } from '@/components/ui/use-toast'
-import { 
-  saveChat, 
-  getChat, 
-  getChatHistory, 
-  getActiveChatId, 
-  setActiveChatId, 
-  deleteChat, 
-  generateChatTitle 
-} from '@/lib/chatHistoryService'
 
 // Define message interface
 interface Message {
@@ -260,17 +251,15 @@ const animationStyles = `
     white-space: nowrap;
     animation: typing 1.5s steps(40, end);
   }
-  
-  /* Save indicator animation */
-  @keyframes fadeInOut {
-    0% { opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { opacity: 0; }
+
+  /* Delete button animation */
+  .delete-btn {
+    opacity: 0;
+    transition: all 0.2s ease;
   }
   
-  .save-indicator {
-    animation: fadeInOut 2s ease-in-out;
+  .history-item:hover .delete-btn {
+    opacity: 1;
   }
 `;
 
@@ -293,7 +282,8 @@ export default function AssistantPage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoadingChat, setIsLoadingChat] = useState(false)
-  const [showSaveIndicator, setShowSaveIndicator] = useState(false)
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false)
+  const [isDeletingChat, setIsDeletingChat] = useState<string | null>(null)
   
   // Animation states
   const [fadeInSuggestions, setFadeInSuggestions] = useState(true)
@@ -310,36 +300,19 @@ export default function AssistantPage() {
     (currentSuggestionPage + 1) * suggestionsPerPage
   )
 
-  // Load saved chat history from localStorage on initial mount
-  useEffect(() => {
-    const savedHistory = getChatHistory()
-    if (savedHistory.length > 0) {
-      setChatHistory(savedHistory)
-    }
-    
-    const activeId = getActiveChatId()
-    if (activeId) {
-      setActiveChatId(activeId)
-      const activeChat = getChat(activeId)
-      if (activeChat) {
-        setConversationId(activeId)
-        setMessages(activeChat.messages)
-      }
-    }
-  }, [])
-
   // Filter chat history based on search term
   const filteredHistory = chatHistory.filter(chat => 
     chat.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     chat.preview.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Auto scroll to bottom of messages
+  // Auto scroll to bottom of messages only when shouldScrollToBottom is true
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (shouldScrollToBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+      setShouldScrollToBottom(false)
     }
-  }, [messages])
+  }, [shouldScrollToBottom, messages])
 
   // Handle animation effect for new messages
   useEffect(() => {
@@ -356,37 +329,12 @@ export default function AssistantPage() {
     return () => clearTimeout(timeoutId)
   }, [messages])
 
-  // Save chat to localStorage when messages or conversationId changes
+  // Load conversation history on component mount
   useEffect(() => {
-    if (conversationId && messages.length > 0) {
-      const currentChat: Chat = {
-        id: conversationId,
-        title: generateChatTitle(
-          messages.find(msg => msg.role === 'user')?.content || 'New Conversation'
-        ),
-        preview: messages.find(msg => msg.role === 'user')?.content || 'Start a new conversation',
-        lastActive: new Date().toISOString(),
-        messages: messages
-      }
-      
-      saveChat(currentChat)
-      setActiveChatId(conversationId)
-      
-      // Show save indicator
-      setShowSaveIndicator(true)
-      const timer = setTimeout(() => {
-        setShowSaveIndicator(false)
-      }, 2000)
-      
-      return () => clearTimeout(timer)
+    if (apiStatusChecked) {
+      loadConversationHistory();
     }
-  }, [messages, conversationId])
-
-  // Update chat history in state when active chat changes
-  useEffect(() => {
-    const savedHistory = getChatHistory()
-    setChatHistory(savedHistory)
-  }, [activeChatId, conversationId])
+  }, [apiStatusChecked]);
 
   // Check API status on component mount
   useEffect(() => {
@@ -432,19 +380,6 @@ export default function AssistantPage() {
       }
       
       setApiStatusChecked(true);
-      
-      // 检查是否有活跃对话，如果没有则创建新对话
-      const activeId = getActiveChatId();
-      if (activeId) {
-        const activeChat = getChat(activeId);
-        if (activeChat) {
-          setConversationId(activeId);
-          setMessages(activeChat.messages);
-          setActiveChatId(activeId);
-          return;
-        }
-      }
-      
       createNewConversation();
     };
     
@@ -485,6 +420,53 @@ export default function AssistantPage() {
     return 'http://localhost:5000';
   }  
 
+  // Load conversation history from the server
+  const loadConversationHistory = async () => {
+    try {
+      const response = await fetch('/api/conversations');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setChatHistory(data);
+      } else {
+        console.error('Failed to load conversation history');
+      }
+    } catch (error) {
+      console.error('Error loading conversation history:', error);
+    }
+  };
+
+  // Delete conversation
+  const deleteConversation = async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the chat selection
+    
+    if (isDeletingChat) return; // Prevent multiple simultaneous deletions
+    
+    try {
+      setIsDeletingChat(chatId);
+      
+      const response = await fetch(`/api/conversations/${chatId}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        // Remove from chat history state
+        setChatHistory(prev => prev.filter(chat => chat.id !== chatId));
+        
+        // If this was the active chat, create a new conversation
+        if (activeChatId === chatId) {
+          createNewConversation();
+        }
+      } else {
+        console.error('Failed to delete conversation');
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    } finally {
+      setIsDeletingChat(null);
+    }
+  };
+
   // Function to create a new conversation with animation
   const createNewConversation = async () => {
     try {
@@ -504,79 +486,45 @@ export default function AssistantPage() {
       // Short delay for animation
       await new Promise(resolve => setTimeout(resolve, 150));
       
-      // Generate a new conversation ID
-      const newConversationId = `conv-${Date.now()}`;
-      setConversationId(newConversationId);
-      setActiveChatId(newConversationId);
-      
-      // Set initial messages
-      const newMessages = [...initialMessages].map(msg => ({ ...msg, isNew: true }));
-      setMessages(newMessages);
+      setMessages([...initialMessages].map(msg => ({ ...msg, isNew: true })));
       setInput('');
       setIsTyping(false);
       
-      // Save the new conversation
-      const newChat: Chat = {
-        id: newConversationId,
-        title: 'New Conversation',
-        preview: 'Start a new conversation',
-        lastActive: new Date().toISOString(),
-        messages: newMessages
-      };
-      
-      saveChat(newChat);
-      setChatHistory(getChatHistory());
-      
-      if (!useMockMode) {
-        try {
-          // Try to create a real conversation with the API
-          const response = await fetch(`${getApiBaseUrl()}/api/conversations/new`, {
-            method: 'POST',
-          })
+      try {
+        // Try to create a real conversation with the API
+        const response = await fetch(`/api/conversations/new`, {
+          method: 'POST',
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setConversationId(data.id)
+          setActiveChatId(null) // Reset active chat
           
-          if (response.ok) {
-            const data = await response.json()
-            setConversationId(data.id)
-            
-            // Set initial assistant message from API response if available
-            if (data.messages && data.messages.length > 0) {
-              setMessages(data.messages.map((msg: any) => ({
-                id: msg.id,
-                role: msg.role,
-                content: msg.content,
-                timestamp: msg.timestamp,
-                isNew: true
-              })))
-              
-              // Save the conversation with API data
-              const apiChat: Chat = {
-                id: data.id,
-                title: 'New Conversation',
-                preview: 'Start a new conversation',
-                lastActive: new Date().toISOString(),
-                messages: data.messages.map((msg: any) => ({
-                  id: msg.id,
-                  role: msg.role,
-                  content: msg.content,
-                  timestamp: msg.timestamp
-                }))
-              };
-              
-              saveChat(apiChat);
-              setActiveChatId(data.id);
-              setChatHistory(getChatHistory());
-            }
-          } else {
-            console.warn('API response not OK, using mock mode')
-            createMockConversation()
+          // Set initial assistant message from API response if available
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages.map((msg: any) => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp,
+              isNew: true
+            })))
           }
-        } catch (error) {
-          console.error('Error creating conversation with API:', error)
+          
+          // Update chat history
+          loadConversationHistory();
+        } else {
+          console.warn('API response not OK, using mock mode')
           createMockConversation()
         }
-      } else {
+      } catch (error) {
+        console.error('Error creating conversation with API:', error)
         createMockConversation()
       }
+      
+      // Scroll to bottom with new messages
+      setShouldScrollToBottom(true);
       
       // Complete loading animation
       setTimeout(() => {
@@ -595,39 +543,39 @@ export default function AssistantPage() {
     // Generate a mock conversation ID
     const mockId = `mock-${Date.now()}`
     setConversationId(mockId)
-    setActiveChatId(mockId)
-    
-    // Create and save the mock conversation
-    const mockChat: Chat = {
-      id: mockId,
-      title: 'New Conversation',
-      preview: 'Start a new conversation',
-      lastActive: new Date().toISOString(),
-      messages: initialMessages
-    };
-    
-    saveChat(mockChat);
-    setChatHistory(getChatHistory());
+    setActiveChatId(null)
     console.log("Using mock conversation with ID:", mockId)
   }
   
   // Load a conversation from history with animation
-  const loadConversation = (chatId: string) => {
+  const loadConversation = async (chatId: string) => {
     setIsLoadingChat(true);
     
-    // Add a small delay for animation
-    setTimeout(() => {
-      const selectedChat = getChat(chatId);
+    try {
+      const response = await fetch(`/api/conversations/${chatId}`);
       
-      if (selectedChat) {
-        setMessages(selectedChat.messages.map(msg => ({...msg, isNew: true})));
-        setConversationId(chatId);
+      if (response.ok) {
+        const data = await response.json();
+        
+        setMessages(data.messages.map((msg: any) => ({
+          ...msg,
+          isNew: true
+        })));
+        
+        setConversationId(data.id);
         setActiveChatId(chatId);
         setIsHistoryOpen(false); // Close sidebar on mobile
+        
+        // Scroll to bottom with loaded messages
+        setShouldScrollToBottom(true);
+      } else {
+        console.error('Failed to load conversation:', await response.text());
       }
-      
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    } finally {
       setIsLoadingChat(false);
-    }, 300);
+    }
   }
 
   // Handle form submission
@@ -648,20 +596,8 @@ export default function AssistantPage() {
     setInput('')
     setIsTyping(true)
     
-    // Update chat with user message
-    const currentChat = getChat(conversationId);
-    if (currentChat) {
-      const updatedChat: Chat = {
-        ...currentChat,
-        title: generateChatTitle(userMessage.content),
-        preview: userMessage.content,
-        lastActive: new Date().toISOString(),
-        messages: [...currentChat.messages, userMessage]
-      };
-      
-      saveChat(updatedChat);
-      setChatHistory(getChatHistory());
-    }
+    // Set shouldScrollToBottom to true when a message is sent
+    setShouldScrollToBottom(true)
     
     // Use mock mode or API based on setting
     if (useMockMode || conversationId.startsWith('mock-')) {
@@ -671,7 +607,7 @@ export default function AssistantPage() {
     
     try {      
       // Step 1: Send message to server
-      const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`, {
+      const response = await fetch(`/api/conversations/${conversationId}/messages/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -687,7 +623,7 @@ export default function AssistantPage() {
       setMessageId(data.message_id)
       
       // Step 2: Open SSE connection to receive streaming response
-      const es = new EventSource(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages/stream`)
+      const es = new EventSource(`/api/conversations/${conversationId}/messages/stream`)
       setEventSource(es)
       
       // Create a placeholder for the streaming response
@@ -702,18 +638,6 @@ export default function AssistantPage() {
       
       setMessages((prev: Message[]) => [...prev, assistantPlaceholder])
       
-      // Update chat with placeholder message
-      const chatToUpdate = getChat(conversationId);
-      if (chatToUpdate) {
-        const updatedChat: Chat = {
-          ...chatToUpdate,
-          lastActive: new Date().toISOString(),
-          messages: [...chatToUpdate.messages, assistantPlaceholder]
-        };
-        
-        saveChat(updatedChat);
-      }
-      
       es.onmessage = (event) => {
         const eventData = JSON.parse(event.data)
         
@@ -723,27 +647,8 @@ export default function AssistantPage() {
           es.close()
           setEventSource(null)
           
-          // After completing a message, update the chat with this new conversation
-          const finalChat = getChat(conversationId);
-          if (finalChat) {
-            const completedMessages = finalChat.messages.map(msg => 
-              msg.id === data.message_id 
-                ? {
-                    ...msg,
-                    content: eventData.full_response || msg.content,
-                    streaming: false
-                  } 
-                : msg
-            );
-            
-            const newChat: Chat = {
-              ...finalChat,
-              messages: completedMessages
-            };
-            
-            saveChat(newChat);
-            setChatHistory(getChatHistory());
-          }
+          // After completing a message, update the chat history
+          loadConversationHistory();
           
         } else if (eventData.chunk) {
           // Update the message with new chunk
@@ -754,61 +659,27 @@ export default function AssistantPage() {
                 : msg
             )
           )
-          
-          // Update the saved chat with the current streaming content
-          const streamChat = getChat(conversationId);
-          if (streamChat) {
-            const streamingMessages = streamChat.messages.map(msg => 
-              msg.id === data.message_id 
-                ? { 
-                    ...msg, 
-                    content: eventData.full_response, 
-                    streaming: true 
-                  } 
-                : msg
-            );
-            
-            const updatedStreamChat: Chat = {
-              ...streamChat,
-              messages: streamingMessages
-            };
-            
-            saveChat(updatedStreamChat);
-          }
         } else if (eventData.status === 'error') {
           // Handle error
           setIsTyping(false)
           es.close()
           setEventSource(null)
           
-          // Add error message
-          const errorMessage: Message = {
-            id: data.message_id,
-            role: 'assistant',
-            content: 'Sorry, there was an error processing your request. Please try again later.',
-            timestamp: new Date().toISOString(),
-            error: true,
-            isNew: true,
-          };
-          
+          // Add error message with animation
           setMessages((prev: Message[]) => [
             ...prev.filter(msg => msg.id !== data.message_id),
-            errorMessage
-          ]);
+            {
+              id: data.message_id,
+              role: 'assistant',
+              content: 'Sorry, there was an error processing your request. Please try again later.',
+              timestamp: new Date().toISOString(),
+              error: true,
+              isNew: true,
+            }
+          ])
           
-          // Update chat with error message
-          const errorChat = getChat(conversationId);
-          if (errorChat) {
-            const errorMessages = errorChat.messages.filter(msg => msg.id !== data.message_id);
-            
-            const updatedErrorChat: Chat = {
-              ...errorChat,
-              messages: [...errorMessages, errorMessage]
-            };
-            
-            saveChat(updatedErrorChat);
-            setChatHistory(getChatHistory());
-          }
+          // Update chat history
+          loadConversationHistory();
         }
       }
       
@@ -828,29 +699,18 @@ export default function AssistantPage() {
         console.log('Switching to mock mode for response')
         handleMockResponse(userMessage)
       } else {
-        // Add error message
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
-          timestamp: new Date().toISOString(),
-          error: true,
-          isNew: true,
-        };
-        
-        setMessages((prev: Message[]) => [...prev, errorMessage]);
-        
-        // Update chat with error message
-        const chatWithError = getChat(conversationId);
-        if (chatWithError) {
-          const updatedChat: Chat = {
-            ...chatWithError,
-            messages: [...chatWithError.messages, errorMessage]
-          };
-          
-          saveChat(updatedChat);
-          setChatHistory(getChatHistory());
-        }
+        // Add error message with animation
+        setMessages((prev: Message[]) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: 'Sorry, there was an error connecting to the assistant. Please try again later.',
+            timestamp: new Date().toISOString(),
+            error: true,
+            isNew: true,
+          }
+        ])
       }
     }
   }
@@ -890,20 +750,27 @@ export default function AssistantPage() {
       setMessages((prev: Message[]) => [...prev, mockResponse])
       setIsTyping(false)
       
-      // Update chat history
-      const currentChat = getChat(conversationId!);
-      if (currentChat) {
-        const updatedChat: Chat = {
-          ...currentChat,
-          title: generateChatTitle(userMessage.content),
-          preview: userMessage.content,
-          lastActive: new Date().toISOString(),
-          messages: [...currentChat.messages, mockResponse]
-        };
-        
-        saveChat(updatedChat);
-        setChatHistory(getChatHistory());
+      // Update chat history 
+      const newChat: Chat = {
+        id: conversationId || `chat-${Date.now()}`,
+        title: userMessage.content.length > 30 
+          ? `${userMessage.content.substring(0, 30)}...` 
+          : userMessage.content,
+        preview: userMessage.content,
+        lastActive: new Date().toISOString(),
+        messages: [...messages, userMessage, mockResponse]
       }
+      
+      setChatHistory((prev: Chat[]) => {
+        const existingIndex = prev.findIndex(chat => chat.id === newChat.id)
+        if (existingIndex >= 0) {
+          const updated = [...prev]
+          updated[existingIndex] = newChat
+          return updated
+        } else {
+          return [newChat, ...prev]
+        }
+      })
     }, 1500) // Simulate typing delay
   }
 
@@ -976,52 +843,6 @@ export default function AssistantPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  // Handle deleting a conversation
-  const handleDeleteConversation = (chatId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering the loadConversation
-    
-    // Delete the conversation
-    deleteChat(chatId);
-    
-    // Update the history list
-    setChatHistory(getChatHistory());
-    
-    // If we're deleting the active conversation, create a new one
-    if (chatId === activeChatId) {
-      createNewConversation();
-    }
-    
-    // Show success message
-    toast({
-      title: "Conversation deleted",
-      description: "The conversation has been removed from your history."
-    });
-  };
-
-  // Handle manually saving the conversation
-  const handleSaveConversation = () => {
-    if (conversationId && messages.length > 0) {
-      const currentChat = getChat(conversationId);
-      
-      if (currentChat) {
-        // Simply re-save the current conversation to trigger the save animation
-        saveChat(currentChat);
-        
-        // Show save indicator
-        setShowSaveIndicator(true);
-        setTimeout(() => {
-          setShowSaveIndicator(false);
-        }, 2000);
-        
-        // Show success message
-        toast({
-          title: "Conversation saved",
-          description: "Your conversation has been saved successfully."
-        });
-      }
-    }
-  };
-
   // Main content
   return (
     <>
@@ -1080,16 +901,6 @@ export default function AssistantPage() {
               </div>
             )}
             
-            {/* Autosave indicator */}
-            {showSaveIndicator && (
-              <div className="px-4 py-2 bg-green-50 border-b border-green-100 save-indicator">
-                <div className="flex items-center text-green-800 text-xs">
-                  <Save className="h-4 w-4 mr-1" />
-                  <span>Conversation saved automatically</span>
-                </div>
-              </div>
-            )}
-            
             {/* Chat list with animations */}
             <div className="flex-1 overflow-y-auto">
               {filteredHistory.length > 0 ? (
@@ -1097,38 +908,45 @@ export default function AssistantPage() {
                   {filteredHistory.map((chat) => (
                     <div
                       key={chat.id}
-                      className={`w-full text-left p-4 transition-all duration-200 history-item relative group ${
+                      className={`relative group ${
                         activeChatId === chat.id ? 'history-item-active' : ''
                       }`}
                     >
-                      <button 
-                        className="w-full text-left flex items-start" 
+                      <button
+                        className={`w-full text-left p-4 transition-all duration-200 history-item ${
+                          activeChatId === chat.id ? 'history-item-active' : ''
+                        }`}
                         onClick={() => loadConversation(chat.id)}
                       >
-                        <div className={`flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center transition-all duration-300 ${
-                          activeChatId === chat.id ? 'bg-blue-200' : ''
-                        }`}>
-                          <MessageSquare className={`h-5 w-5 text-blue-600 transition-all duration-300 ${
-                            activeChatId === chat.id ? 'text-blue-700' : ''
-                          }`} />
-                        </div>
-                        <div className="ml-3 flex-grow">
-                          <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
-                          <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
-                          <div className="flex items-center mt-1 text-xs text-gray-400">
-                            <Clock className="h-3 w-3 mr-1" />
-                            <span>{formatDate(chat.lastActive)}</span>
+                        <div className="flex items-start">
+                          <div className={`flex-shrink-0 h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center transition-all duration-300 ${
+                            activeChatId === chat.id ? 'bg-blue-200' : ''
+                          }`}>
+                            <MessageSquare className={`h-5 w-5 text-blue-600 transition-all duration-300 ${
+                              activeChatId === chat.id ? 'text-blue-700' : ''
+                            }`} />
+                          </div>
+                          <div className="ml-3 flex-grow pr-6">
+                            <p className="font-medium text-gray-900 line-clamp-1">{chat.title}</p>
+                            <p className="text-sm text-gray-500 line-clamp-1">{chat.preview}</p>
+                            <div className="flex items-center mt-1 text-xs text-gray-400">
+                              <Clock className="h-3 w-3 mr-1" />
+                              <span>{formatDate(chat.lastActive)}</span>
+                            </div>
                           </div>
                         </div>
                       </button>
-                      
-                      {/* Delete button that appears on hover */}
-                      <button
-                        className="absolute right-2 top-2 p-1 rounded-full bg-white text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => handleDeleteConversation(chat.id, e)}
+                      <button 
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-red-500 rounded-full delete-btn z-10"
+                        onClick={(e) => deleteConversation(chat.id, e)}
+                        disabled={isDeletingChat === chat.id}
                         title="Delete conversation"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {isDeletingChat === chat.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   ))}
@@ -1169,26 +987,15 @@ export default function AssistantPage() {
                   : 'New Chat'}
               </h2>
             </div>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveConversation}
-                className="flex items-center"
-                title="Save conversation"
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={createNewConversation}
-                className="flex items-center button-hover-effect"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                New Chat
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={createNewConversation}
+              className="flex items-center button-hover-effect"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              New Chat
+            </Button>
           </div>
           
           {/* Chat messages with loading state */}
